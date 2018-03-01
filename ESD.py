@@ -12,6 +12,7 @@
     :copyright: Copyright (c) 2018 Feei. All rights reserved
 """
 import os
+import re
 import sys
 import time
 import string
@@ -56,13 +57,20 @@ logger.setLevel(logging.INFO)
 
 class EnumSubDomain(object):
     def __init__(self, domain):
+        logger.info('----------')
+        logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
-        dns_servers = [
-            '223.5.5.5',
-            '223.6.6.6',
-            '119.29.29.29',
-        ]
+        dns_servers = []
+        if not os.path.isfile('servers.esd'):
+            logger.critical('ESD/servers.esd file not found!')
+            exit(1)
+        with open('servers.esd') as f:
+            for s in f:
+                dns_servers.append(s.strip())
+        if len(dns_servers) == 0:
+            logger.info('ESD/servers.esd not configured, The default will be used!')
+            dns_servers = ['223.5.5.5', '223.6.6.6', '114.114.114.114']
         self.loop = asyncio.get_event_loop()
         self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=dns_servers)
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
@@ -157,5 +165,28 @@ class EnumSubDomain(object):
 
 
 if __name__ == '__main__':
-    esd = EnumSubDomain(sys.argv[1])
-    esd.start()
+    try:
+        domains = []
+        param = sys.argv[1].strip()
+        if os.path.isfile(param):
+            with open(param) as fh:
+                for line_domain in fh:
+                    line_domain = line_domain.strip().lower()
+                    re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
+                    if len(re_domain) > 0 and re_domain[0][0] == line_domain:
+                        domains.append(line_domain)
+                    else:
+                        logger.error('Domain validation failed: {d}'.format(d=line_domain))
+        else:
+            if ',' in param:
+                for p in param.split(','):
+                    domains.append(p.strip())
+            else:
+                domains.append(param)
+        logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
+        for d in domains:
+            esd = EnumSubDomain(d)
+            esd.start()
+    except KeyboardInterrupt:
+        logger.info('Bye :)')
+        exit(0)

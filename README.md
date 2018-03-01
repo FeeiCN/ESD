@@ -2,7 +2,7 @@
 
 ## 优势
 #### AsyncIO协程，更快的速度
-使用AsyncIO将比gevent模式快65%以上(基于我们测试结果)。
+基于AsyncIO+AioDNS将比传统多进程/多线程/gevent模式快一半以上。
 通过扫描`qq.com`，共`170083`条规则，找到`2210`个域名，耗时`135`秒左右，平均`1250条/秒`。
 ```
 2018-02-27 16:04:22,957 [ESD] [INFO] Total domain: 2210
@@ -34,8 +34,14 @@
 # 安装依赖
 pip install -r requirements.txt
 
-# 使用
+# 扫描单个域名
 python ESD.py qq.com
+
+# 扫描多个域名（英文逗号分隔）
+python ESD.py qq.com,tencent.com
+
+# 扫描文件（文件中每行一个域名）
+python ESD.py targets.txt
 ```
 
 ## 后续
