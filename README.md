@@ -1,10 +1,10 @@
 # ESD(Enumeration Sub Domain)
+[![asciicast](https://asciinema.org/a/15WhUe40eEhSbwAXZdf2RQdq9.png)](https://asciinema.org/a/15WhUe40eEhSbwAXZdf2RQdq9)
 
 ## 优势
 #### AsyncIO协程，更快的速度
 基于AsyncIO+AioDNS将比传统多进程/多线程/gevent模式快一半以上。
 通过扫描`qq.com`，共`170083`条规则，找到`2036`个域名，耗时`116`秒左右，平均`1400+条/秒`。
-![](SCREENSHOT.jpg)
 
 #### 融合字典，更全的结果
 > 去重后共170083条子域名字典
