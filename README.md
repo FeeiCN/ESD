@@ -38,6 +38,11 @@ pip install -r requirements.txt
 python ESD.py qq.com
 ```
 
+## 后续
+- 增加本地DNS缓存，提升重复域名查询的效率
+- 支持泛解析域名
+- 支持三级、四级子域名
+
 ## 参考
 - https://github.com/aboul3la/Sublist3r
 - https://github.com/TheRook/subbrute
