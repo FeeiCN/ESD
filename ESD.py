@@ -65,7 +65,7 @@ class EnumSubDomain(object):
         dns_servers = []
         dns_server_config = '{pd}/servers.esd'.format(pd=self.project_directory)
         if not os.path.isfile(dns_server_config):
-            logger.critical('servers.esd file not found!')
+            logger.critical('ESD/servers.esd file not found!')
             exit(1)
         with open(dns_server_config) as f:
             for s in f:
@@ -99,7 +99,7 @@ class EnumSubDomain(object):
 
     def load_sub_domain_dict(self):
         dicts = []
-        with open('{dir}/subs.esd'.format(dir=self.project_directory), encoding='utf-8') as f:
+        with open('{pd}/subs.esd'.format(pd=self.project_directory), encoding='utf-8') as f:
             for line in f:
                 line = line.strip().lower()
                 # skip comments and space
@@ -155,7 +155,7 @@ class EnumSubDomain(object):
             task.add_done_callback(self.callback)
             tasks.append(task)
         self.loop.run_until_complete(asyncio.wait(tasks))
-        output_path = '{dir}/data/{domain}_{time}.esd'.format(dir=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
+        output_path = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         with open(output_path, 'w') as f:
             for domain, ips in self.data.items():
                 f.write('{domain} : {ips}\n'.format(domain=domain, ips=','.join(ips)))
