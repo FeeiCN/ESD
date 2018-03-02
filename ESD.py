@@ -57,15 +57,17 @@ logger.setLevel(logging.INFO)
 
 class EnumSubDomain(object):
     def __init__(self, domain):
+        self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
         dns_servers = []
-        if not os.path.isfile('servers.esd'):
-            logger.critical('ESD/servers.esd file not found!')
+        dns_server_config = '{pd}/servers.esd'.format(pd=self.project_directory)
+        if not os.path.isfile(dns_server_config):
+            logger.critical('servers.esd file not found!')
             exit(1)
-        with open('servers.esd') as f:
+        with open(dns_server_config) as f:
             for s in f:
                 dns_servers.append(s.strip())
         if len(dns_servers) == 0:
@@ -73,7 +75,6 @@ class EnumSubDomain(object):
             dns_servers = ['223.5.5.5', '223.6.6.6', '114.114.114.114']
         self.loop = asyncio.get_event_loop()
         self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=dns_servers)
-        self.project_directory = os.path.abspath(os.path.dirname(__file__))
         self.general_dicts = []
 
     def generate_general_dicts(self, line):

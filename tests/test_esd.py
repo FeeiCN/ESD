@@ -1,3 +1,4 @@
+import time
 from ESD import EnumSubDomain
 
 
@@ -7,6 +8,7 @@ def test_load_sub_domain_dict():
 
 
 def test_generate_general_dict():
+    start_time = time.time()
     esd = EnumSubDomain('feei.cn')
     rules = {
         '{letter}': 26,
@@ -24,5 +26,6 @@ def test_generate_general_dict():
     for k, v in rules.items():
         esd.general_dicts = []
         dicts = esd.generate_general_dicts(k)
-        print(len(dicts), dicts)
+        print(len(dicts), k)
         assert len(dicts) == v
+    print(time.time() - start_time)
