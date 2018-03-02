@@ -37,9 +37,9 @@ python ESD.py targets.txt
 ```
 
 ## 后续
-- 增加本地DNS缓存，提升重复域名查询的效率
-- 支持泛解析域名，通过AioHTTP比对Response相似度
+- 提升扫描速度
 - 支持三级子域名，多种组合更多可能性
+- 支持泛解析域名，通过AioHTTP比对Response相似度
 
 ## 参考
 - https://github.com/aboul3la/Sublist3r
