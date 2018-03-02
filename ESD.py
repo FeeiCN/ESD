@@ -118,6 +118,8 @@ class EnumSubDomain(object):
         full_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
             ret = await self.resolver.query(full_domain, 'A')
+            ret = [r.host for r in ret]
+            self.process(sub, ret)
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
@@ -127,38 +129,62 @@ class EnumSubDomain(object):
             if err_code not in [1, 4, 11, 12]:
                 logger.info('{domain} {exception}'.format(domain=full_domain, exception=e))
             ret = None
-
+        logger.debug('query {sub}'.format(sub=sub))
         return sub, ret
 
-    def callback(self, future):
-        sub, result = future.result()
-        if result is None:
-            return
+    def process(self, sub, ret):
         full_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
-        domain_ips = [s.host for s in result]
+        domain_ips = [s for s in ret]
         self.data[full_domain] = sorted(domain_ips)
         logger.info('{domains} {ips}'.format(domains=full_domain, ips=domain_ips))
 
-    def start(self):
+    @staticmethod
+    def limited_concurrency_coroutines(coros, limit):
+        from itertools import islice
+        futures = [
+            asyncio.ensure_future(c)
+            for c in islice(coros, 0, limit)
+        ]
+
+        async def first_to_finish():
+            while True:
+                await asyncio.sleep(0)
+                for f in futures:
+                    if f.done():
+                        futures.remove(f)
+                        try:
+                            nf = next(coros)
+                            futures.append(
+                                asyncio.ensure_future(nf))
+                        except StopIteration:
+                            pass
+                        return f.result()
+
+        while len(futures) > 0:
+            yield first_to_finish()
+
+    async def start(self, tasks):
+        for res in self.limited_concurrency_coroutines(tasks, 10000):
+            await res
+
+    def run(self):
         start_time = time.time()
-        # 检查是否存在泛解析
+        # extensive domain
         job = self.query('enumsubdomain-feei')
         sub, ret = self.loop.run_until_complete(job)
-        if ret is not None and len([s.host for s in ret]) > 0:
+        if ret is not None and len([s for s in ret]) > 0:
             logger.critical('存在泛解析，无法通过枚举子域名爆破!')
             return
         subs = self.load_sub_domain_dict()
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
-        tasks = []
-        for sub in subs:
-            task = asyncio.ensure_future(self.query(sub))
-            task.add_done_callback(self.callback)
-            tasks.append(task)
-        self.loop.run_until_complete(asyncio.wait(tasks))
+        logger.info('Generate coroutines...')
+        tasks = (self.query(sub) for sub in subs)
+        self.loop.run_until_complete(self.start(tasks))
+        # write output
         output_path = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         with open(output_path, 'w') as f:
             for domain, ips in self.data.items():
-                f.write('{domain} : {ips}\n'.format(domain=domain, ips=','.join(ips)))
+                f.write('%-30s%-s\n' % (domain, ','.join(ips)))
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = time.time() - start_time
@@ -187,7 +213,7 @@ if __name__ == '__main__':
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
             esd = EnumSubDomain(d)
-            esd.start()
+            esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
