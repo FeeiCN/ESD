@@ -42,7 +42,7 @@ python ESD.py targets.txt
 - 支持泛解析域名，通过AioHTTP比对Response相似度
 
 ## 参考
-- http://feei.cn/枚举子域名.html
+- http://feei.cn/枚举子域名
 - https://github.com/aboul3la/Sublist3r
 - https://github.com/TheRook/subbrute
 - https://github.com/lijiejie/subDomainsBrute
