@@ -193,6 +193,9 @@ class EnumSubDomain(object):
 
 if __name__ == '__main__':
     try:
+        if len(sys.argv) < 2:
+            logger.info("Usage: python ESD.py feei.cn")
+            exit(0)
         domains = []
         param = sys.argv[1].strip()
         if os.path.isfile(param):
