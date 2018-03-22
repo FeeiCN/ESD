@@ -181,11 +181,16 @@ class EnumSubDomain(object):
         tasks = (self.query(sub) for sub in subs)
         self.loop.run_until_complete(self.start(tasks))
         # write output
-        output_path = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
-        with open(output_path, 'w') as f:
+        output_path_with_time = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
+        output_path = '{pd}/data/{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
+        with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
             for domain, ips in self.data.items():
-                f.write('%-30s%-s\n' % (domain, ','.join(ips)))
+                # 格式和其它扫描器一致，确保被同时调用时不增加解析成本
+                con = '%-30s%-s\n' % (domain, ','.join(ips))
+                op.write(con)
+                opt.write(con)
         logger.info('Output: {op}'.format(op=output_path))
+        logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = time.time() - start_time
         logger.info('Time consume: {tc}s'.format(tc=round(time_consume, 3)))
