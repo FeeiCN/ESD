@@ -164,6 +164,8 @@ class EnumSubDomain(object):
                     dicts_general = self.generate_general_dicts(line)
                     dicts += dicts_general
                 else:
+                    # compatibility other dicts
+                    line = line.strip('.')
                     dicts.append(line)
         dicts = list(set(dicts))
         return dicts
@@ -184,16 +186,16 @@ class EnumSubDomain(object):
             else:
                 ret = await self.resolver.query(full_domain, 'A')
                 ret = [r.host for r in ret]
-                domain_ips = [s for s in ret]
-                # It is a wildcard domain name and
-                # the subdomain IP that is burst is consistent with the IP
-                # that does not exist in the domain name resolution,
-                # the response similarity is discarded for further processing.
-                if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
-                    logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub, ips=domain_ips))
-                else:
-                    self.data[full_domain] = sorted(domain_ips)
-                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub, ips=domain_ips))
+            domain_ips = [s for s in ret]
+            # It is a wildcard domain name and
+            # the subdomain IP that is burst is consistent with the IP
+            # that does not exist in the domain name resolution,
+            # the response similarity is discarded for further processing.
+            if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
+                logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub, ips=domain_ips))
+            else:
+                self.data[full_domain] = sorted(domain_ips)
+                logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub, ips=domain_ips))
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
@@ -351,25 +353,27 @@ class EnumSubDomain(object):
         self.loop.run_until_complete(self.start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
-        # Response similarity comparison
-        dns_subs = []
-        for domain, ips in self.data.items():
-            logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
-            dns_subs.append(domain)
-        self.wildcard_subs = list(set(subs) - set(dns_subs))
-        logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
-        logger.info('Will continue to test the {len} domains name for generically parsed IPs by responding to similarity ratios, the speed will be affected.'.format(len=len(self.wildcard_subs)))
-        self.coroutine_count = self.coroutine_count_request
-        self.remainder = len(self.wildcard_subs)
-        tasks = (self.similarity(sub) for sub in self.wildcard_subs)
-        self.loop.run_until_complete(self.start(tasks))
 
-        # Distinct last domains use RSC
-        # Maybe misinformation
-        # self.distinct()
+        if self.is_wildcard_domain:
+            # Response similarity comparison
+            dns_subs = []
+            for domain, ips in self.data.items():
+                logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
+                dns_subs.append(domain)
+            self.wildcard_subs = list(set(subs) - set(dns_subs))
+            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
+            logger.info('Will continue to test the {len} domains name for generically parsed IPs by responding to similarity ratios, the speed will be affected.'.format(len=len(self.wildcard_subs)))
+            self.coroutine_count = self.coroutine_count_request
+            self.remainder = len(self.wildcard_subs)
+            tasks = (self.similarity(sub) for sub in self.wildcard_subs)
+            self.loop.run_until_complete(self.start(tasks))
 
-        time_consume_request = int(time.time() - dns_time)
-        logger.info('Requests time consume {tcr}s'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+            # Distinct last domains use RSC
+            # Maybe misinformation
+            # self.distinct()
+
+            time_consume_request = int(time.time() - dns_time)
+            logger.info('Requests time consume {tcr}s'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
         # write output
         output_path_with_time = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{pd}/data/{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
