@@ -203,6 +203,9 @@ class EnumSubDomain(object):
             if err_code not in [1, 4, 11, 12]:
                 logger.info('{domain} {exception}'.format(domain=full_domain, exception=e))
             ret = None
+        except Exception as e:
+            logger.info(full_domain)
+            logger.warning(traceback.format_exc())
         self.remainder += -1
         return sub, ret
 
