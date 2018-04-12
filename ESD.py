@@ -176,15 +176,16 @@ class EnumSubDomain(object):
         :param sub:
         :return:
         """
-        full_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+        ret = None
+        sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
             if sub == self.wildcard_sub:
                 # Use a stable DNS server to determine the ubiquitous resolution
                 resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers)
-                ret = await resolver.query(full_domain, 'A')
+                ret = await resolver.query(sub_domain, 'A')
                 ret = [r.host for r in ret]
             else:
-                ret = await self.resolver.query(full_domain, 'A')
+                ret = await self.resolver.query(sub_domain, 'A')
                 ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
             # It is a wildcard domain name and
@@ -192,10 +193,10 @@ class EnumSubDomain(object):
             # that does not exist in the domain name resolution,
             # the response similarity is discarded for further processing.
             if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
-                logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub, ips=domain_ips))
+                logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                self.data[full_domain] = sorted(domain_ips)
-                logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub, ips=domain_ips))
+                self.data[sub_domain] = sorted(domain_ips)
+                logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
@@ -203,32 +204,12 @@ class EnumSubDomain(object):
             # 11: Could not contact DNS servers
             # 12: Timeout while contacting DNS servers
             if err_code not in [1, 4, 11, 12]:
-                logger.info('{domain} {exception}'.format(domain=full_domain, exception=e))
-            ret = None
+                logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
         except Exception as e:
-            logger.info(full_domain)
+            logger.info(sub_domain)
             logger.warning(traceback.format_exc())
         self.remainder += -1
         return sub, ret
-
-    def process(self, sub, ret):
-        """
-        Process result
-        :param sub:
-        :param ret:
-        :return:
-        """
-        full_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
-        domain_ips = [s for s in ret]
-        # It is a wildcard domain name and
-        # the subdomain IP that is burst is consistent with the IP
-        # that does not exist in the domain name resolution,
-        # the response similarity is discarded for further processing.
-        if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
-            logger.debug('{r} {sub} maybe wildcard domain, continue RSC'.format(r=self.remainder, sub=sub, ips=domain_ips))
-        else:
-            self.data[full_domain] = sorted(domain_ips)
-            logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub, ips=domain_ips))
 
     @staticmethod
     def limited_concurrency_coroutines(coros, limit):
@@ -302,9 +283,9 @@ class EnumSubDomain(object):
                     ratio = round(ratio, 3)
                 self.remainder += -1
                 if ratio > self.rsc_ratio:
-                    logger.debug('{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub, ratio=ratio))
+                    logger.debug('{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
                 else:
-                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub, ratio=ratio))
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
                     self.wildcard_domains[sub_domain] = html
                     self.data[sub_domain] = self.wildcard_ips
         except Exception as e:
