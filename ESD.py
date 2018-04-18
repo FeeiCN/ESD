@@ -70,7 +70,7 @@ class EnumSubDomain(object):
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
-        self.stable_dns_servers = ['8.8.8.8', '114.114.114.114', '1.1.1.1']
+        self.stable_dns_servers = ['114.114.114.114']
         dns_servers = []
         dns_server_config = '{pd}/servers.esd'.format(pd=self.project_directory)
         if not os.path.isfile(dns_server_config):
@@ -84,8 +84,8 @@ class EnumSubDomain(object):
             dns_servers = self.stable_dns_servers
         random.shuffle(dns_servers)
         self.dns_servers = dns_servers
+        self.resolver = None
         self.loop = asyncio.get_event_loop()
-        self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.dns_servers)
         self.general_dicts = []
         # Mark whether the current domain name is a pan-resolved domain name
         self.is_wildcard_domain = False
@@ -179,14 +179,8 @@ class EnumSubDomain(object):
         ret = None
         sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
-            if sub == self.wildcard_sub:
-                # Use a stable DNS server to determine the ubiquitous resolution
-                resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers)
-                ret = await resolver.query(sub_domain, 'A')
-                ret = [r.host for r in ret]
-            else:
-                ret = await self.resolver.query(sub_domain, 'A')
-                ret = [r.host for r in ret]
+            ret = await self.resolver.query(sub_domain, 'A')
+            ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
             # It is a wildcard domain name and
             # the subdomain IP that is burst is consistent with the IP
@@ -315,20 +309,36 @@ class EnumSubDomain(object):
         self.remainder = len(subs)
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
         logger.info('Generate coroutines...')
-        # wildcard domain
-        job = self.query(self.wildcard_sub)
-        sub, ret = self.loop.run_until_complete(job)
-        logger.info('{sub} {ret}'.format(sub=sub, ret=ret))
-        if ret is not None and len([s for s in ret]) > 0:
+        # Verify that all DNS server results are consistent
+        stable_dns = []
+        for dns in self.dns_servers:
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
+            job = self.query(self.wildcard_sub)
+            sub, ret = self.loop.run_until_complete(job)
+            logger.info('{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
+            if ret is None:
+                ret = None
+            else:
+                ret = sorted(ret)
+            stable_dns.append(ret)
+        is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
+        if not is_all_stable_dns:
+            logger.info('Is all stable dns: NO, use the default dns server')
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers)
+        # Wildcard domain
+        is_wildcard_domain = not (stable_dns.count(None) == len(stable_dns))
+        if is_wildcard_domain:
             logger.info('This is a wildcard domain, will enumeration subdomains use by DNS+RSC.')
             self.is_wildcard_domain = True
-            self.wildcard_ips = ret
+            self.wildcard_ips = stable_dns[0]
             try:
                 self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10).text
                 self.wildcard_html_len = len(self.wildcard_html)
                 logger.debug('Wildcard domain response html length: {len}'.format(len=self.wildcard_html_len))
             except requests.exceptions.ConnectTimeout:
                 logger.warning('Request response content failed, check network please!')
+        else:
+            logger.info('Not a wildcard domain')
         self.coroutine_count = self.coroutine_count_dns
         tasks = (self.query(sub) for sub in subs)
         self.loop.run_until_complete(self.start(tasks))

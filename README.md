@@ -26,6 +26,10 @@
     - subbrute: names_small.txt
     - subDomainsBrute: subnames_full.txt
 
+#### DNS服务器
+- 解决各家DNS服务商对于网络线路出口判定不一致问题
+- 解决各家DNS服务商缓存时间不一致问题
+
 ## 使用
 仅在Python3下验证过
 ```
