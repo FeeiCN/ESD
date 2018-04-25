@@ -51,7 +51,7 @@ python ESD.py targets.txt
 - 支持三级子域名，多种组合更多可能性
 
 ## 参考
-- http://feei.cn/枚举子域名
+- http://feei.cn/esd
 - https://github.com/aboul3la/Sublist3r
 - https://github.com/TheRook/subbrute
 - https://github.com/lijiejie/subDomainsBrute
