@@ -271,7 +271,7 @@ class EnumSubDomain(object):
                 if len(html) == self.wildcard_html_len:
                     ratio = 1
                 else:
-                    # SPEED 4 2 1
+                    # SPEED 4 2 1, but here is still the bottleneck
                     # real_quick_ratio() > quick_ratio() > ratio()
                     ratio = SequenceMatcher(None, html, self.wildcard_html).real_quick_ratio()
                     ratio = round(ratio, 3)
@@ -311,6 +311,7 @@ class EnumSubDomain(object):
         logger.info('Generate coroutines...')
         # Verify that all DNS server results are consistent
         stable_dns = []
+        wildcard_ips = None
         for dns in self.dns_servers:
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
             job = self.query(self.wildcard_sub)
@@ -320,6 +321,8 @@ class EnumSubDomain(object):
                 ret = None
             else:
                 ret = sorted(ret)
+            if dns in self.stable_dns_servers:
+                wildcard_ips = ret
             stable_dns.append(ret)
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
@@ -330,7 +333,11 @@ class EnumSubDomain(object):
         if is_wildcard_domain:
             logger.info('This is a wildcard domain, will enumeration subdomains use by DNS+RSC.')
             self.is_wildcard_domain = True
-            self.wildcard_ips = stable_dns[0]
+            if wildcard_ips is not None:
+                self.wildcard_ips = wildcard_ips
+            else:
+                self.wildcard_ips = stable_dns[0]
+            logger.info('Wildcard IPS: {ips}'.format(ips=self.wildcard_ips))
             try:
                 self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10).text
                 self.wildcard_html_len = len(self.wildcard_html)
