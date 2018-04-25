@@ -168,6 +168,8 @@ class EnumSubDomain(object):
                     line = line.strip('.')
                     dicts.append(line)
         dicts = list(set(dicts))
+        # root domain
+        dicts.append('@')
         return dicts
 
     async def query(self, sub):
@@ -177,7 +179,11 @@ class EnumSubDomain(object):
         :return:
         """
         ret = None
-        sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+        # root domain
+        if sub == '@':
+            sub_domain = self.domain
+        else:
+            sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
             ret = await self.resolver.query(sub_domain, 'A')
             ret = [r.host for r in ret]
@@ -371,22 +377,24 @@ class EnumSubDomain(object):
             # self.distinct()
 
             time_consume_request = int(time.time() - dns_time)
-            logger.info('Requests time consume {tcr}s'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+            logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
         # write output
         output_path_with_time = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{pd}/data/{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
+        max_domain_len = max(map(len, self.data)) + 2
+        output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
             for domain, ips in self.data.items():
                 # The format is consistent with other scanners to ensure that they are
                 # invoked at the same time without increasing the cost of resolution
-                con = '%-30s%-s\n' % (domain, ','.join(ips))
+                con = output_format % (domain, ','.join(ips))
                 op.write(con)
                 opt.write(con)
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = int(time.time() - start_time)
-        logger.info('Time consume: {tc}s'.format(tc=str(datetime.timedelta(seconds=time_consume))))
+        logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
 
 
 if __name__ == '__main__':

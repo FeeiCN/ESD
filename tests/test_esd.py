@@ -18,6 +18,7 @@ def test_generate_general_dict():
         '{letter}{letter}{number}{number}': 67600,
         '{letter}{letter}{letter}': 17576,
         '{letter}{letter}{letter}{number}{number}': 1757600,
+        '{letter}{letter}{letter}{letter}': 456976,
         '{number}': 10,
         '{number}{number}': 100,
         '{number}{number}{number}': 1000,
