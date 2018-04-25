@@ -357,10 +357,10 @@ class EnumSubDomain(object):
             dns_subs = []
             for domain, ips in self.data.items():
                 logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
-                dns_subs.append(domain)
+                dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
             self.wildcard_subs = list(set(subs) - set(dns_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
-            logger.info('Will continue to test the {len} domains name for generically parsed IPs by responding to similarity ratios, the speed will be affected.'.format(len=len(self.wildcard_subs)))
+            logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data), len_remain=len(self.wildcard_subs)))
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
             tasks = (self.similarity(sub) for sub in self.wildcard_subs)
