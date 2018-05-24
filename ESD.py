@@ -195,8 +195,9 @@ class EnumSubDomain(object):
             if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
                 logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                self.data[sub_domain] = sorted(domain_ips)
-                logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+                if sub != self.wildcard_sub:
+                    self.data[sub_domain] = sorted(domain_ips)
+                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
