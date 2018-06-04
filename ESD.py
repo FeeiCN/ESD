@@ -64,7 +64,7 @@ logger.setLevel(logging.DEBUG)
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain):
+    def __init__(self, domain, response_filter=None):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
@@ -121,6 +121,8 @@ class EnumSubDomain(object):
             'Accept-Encoding': 'gzip, deflate',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
         }
+        # Filter the domain's response(regex)
+        self.response_filter = response_filter
 
     def generate_general_dicts(self, line):
         """
@@ -284,11 +286,22 @@ class EnumSubDomain(object):
                     ratio = round(ratio, 3)
                 self.remainder += -1
                 if ratio > self.rsc_ratio:
+                    # passed
                     logger.debug('{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
                 else:
-                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    # added
                     self.wildcard_domains[sub_domain] = html
-                    self.data[sub_domain] = self.wildcard_ips
+                    if self.response_filter is not None:
+                        for resp_filter in self.response_filter.split(','):
+                            if resp_filter in html:
+                                logger.debug('{r} RSC filter in response (passed) {sub}'.format(r=self.remainder, sub=sub_domain))
+                                return
+                            else:
+                                continue
+                        self.data[sub_domain] = self.wildcard_ips
+                    else:
+                        self.data[sub_domain] = self.wildcard_ips
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -405,6 +418,10 @@ if __name__ == '__main__':
             exit(0)
         domains = []
         param = sys.argv[1].strip()
+        if len(sys.argv) >= 3:
+            response_filter = sys.argv[2].strip()
+        else:
+            response_filter = None
         if os.path.isfile(param):
             with open(param) as fh:
                 for line_domain in fh:
@@ -422,7 +439,7 @@ if __name__ == '__main__':
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d)
+            esd = EnumSubDomain(d, response_filter)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')

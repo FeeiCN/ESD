@@ -42,6 +42,12 @@ python ESD.py qq.com
 # 扫描多个域名（英文逗号分隔）
 python ESD.py qq.com,tencent.com
 
+# 扫描单个域名且过滤子域名中单个特定响应内容
+python ESD.py mogujie.com 搜本店
+
+# 扫描单个域名且过滤子域名中多个特定响应内容
+python ESD.py mogujie.com 搜本店,收藏店铺
+
 # 扫描文件（文件中每行一个域名）
 python ESD.py targets.txt
 ```
