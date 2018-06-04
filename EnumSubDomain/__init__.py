@@ -29,13 +29,9 @@ import requests
 import async_timeout
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
-from logging import handlers
 from difflib import SequenceMatcher
 
-log_path = 'logs'
-if os.path.isdir(log_path) is not True:
-    os.mkdir(log_path, 0o755)
-logfile = os.path.join(log_path, 'ESD.log')
+__version__ = '0.0.5'
 
 handler = colorlog.StreamHandler()
 formatter = colorlog.ColoredFormatter(
@@ -54,34 +50,20 @@ formatter = colorlog.ColoredFormatter(
 )
 handler.setFormatter(formatter)
 
-file_handler = handlers.RotatingFileHandler(logfile, maxBytes=(1048576 * 5), backupCount=7)
-file_handler.setFormatter(formatter)
-
 logger = colorlog.getLogger('ESD')
 logger.addHandler(handler)
-logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None):
+    def __init__(self, domain, response_filter=None, dns_servers=['223.5.5.5', '223.6.6.6', '114.114.114.114']):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
+        logger.info(self.project_directory)
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
         self.stable_dns_servers = ['114.114.114.114']
-        dns_servers = []
-        dns_server_config = '{pd}/servers.esd'.format(pd=self.project_directory)
-        if not os.path.isfile(dns_server_config):
-            logger.critical('ESD/servers.esd file not found!')
-            exit(1)
-        with open(dns_server_config) as f:
-            for s in f:
-                dns_servers.append(s.strip())
-        if len(dns_servers) == 0:
-            logger.info('ESD/servers.esd not configured, The default dns server will be used!')
-            dns_servers = self.stable_dns_servers
         random.shuffle(dns_servers)
         self.dns_servers = dns_servers
         self.resolver = None
@@ -412,8 +394,8 @@ class EnumSubDomain(object):
         domains = self.dnspod()
         logger.info('DNSPod JSONP API Count: {c}'.format(c=len(domains)))
         # write output
-        output_path_with_time = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
-        output_path = '{pd}/data/{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
+        output_path_with_time = '{pd}/.{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
+        output_path = '{pd}/.{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
         max_domain_len = max(map(len, self.data)) + 2
         output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
@@ -428,9 +410,10 @@ class EnumSubDomain(object):
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
+        return self.data
 
 
-if __name__ == '__main__':
+def main():
     try:
         if len(sys.argv) < 2:
             logger.info("Usage: python ESD.py feei.cn")
@@ -463,3 +446,7 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
+
+
+if __name__ == '__main__':
+    main()

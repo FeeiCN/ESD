@@ -1,4 +1,9 @@
 # ESD(Enumeration Sub Domain)
+
+[![PyPI](https://img.shields.io/pypi/v/ESD.svg)](https://pypi.org/project/ESD/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/ESD.svg)
+![license](https://img.shields.io/github/license/FeeiCN/ESD.svg)
+
 [![asciicast](https://asciinema.org/a/15WhUe40eEhSbwAXZdf2RQdq9.png)](https://asciinema.org/a/15WhUe40eEhSbwAXZdf2RQdq9)
 
 ## 优势
@@ -40,24 +45,31 @@
 
 ## 使用
 仅在Python3下验证过
+```bash
+pip install esd
 ```
-# 安装依赖
-pip install -r requirements.txt
-
+**CLI命令行使用**
+```bash
 # 扫描单个域名
-python ESD.py qq.com
+esd qq.com
 
 # 扫描多个域名（英文逗号分隔）
-python ESD.py qq.com,tencent.com
+esd qq.com,tencent.com
 
 # 扫描单个域名且过滤子域名中单个特定响应内容
-python ESD.py mogujie.com 搜本店
+esd mogujie.com 搜本店
 
 # 扫描单个域名且过滤子域名中多个特定响应内容
-python ESD.py mogujie.com 搜本店,收藏店铺
+esd mogujie.com 搜本店,收藏店铺
 
 # 扫描文件（文件中每行一个域名）
-python ESD.py targets.txt
+esd targets.txt
+```
+
+**程序调用**
+```python
+from ESD.EnumSubDomain import EnumSubDomain
+domains = EnumSubDomain('feei.cn').run()
 ```
 
 ## 后续
