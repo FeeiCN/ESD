@@ -319,6 +319,21 @@ class EnumSubDomain(object):
                     m = 'Stay'
                 logger.info('{d} : {d2} {ratio} {m}'.format(d=domain, d2=domain2, ratio=ratio, m=m))
 
+    def dnspod(self):
+        """
+        http://feei.cn/esd
+        :return:
+        """
+        try:
+            content = requests.get('http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain)).text
+            domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
+            domains = list(set(domains))
+            tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
+            self.loop.run_until_complete(self.start(tasks))
+        except Exception as e:
+            domains = []
+        return domains
+
     def run(self):
         """
         Run
@@ -392,6 +407,10 @@ class EnumSubDomain(object):
 
             time_consume_request = int(time.time() - dns_time)
             logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+        # DNSPod JSONP API
+        logger.info('Collect DNSPod JSONP API\'s subdomains...')
+        domains = self.dnspod()
+        logger.info('DNSPod JSONP API Count: {c}'.format(c=len(domains)))
         # write output
         output_path_with_time = '{pd}/data/{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{pd}/data/{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
