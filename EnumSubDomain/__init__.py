@@ -22,16 +22,20 @@ import itertools
 import datetime
 import colorlog
 import asyncio
+import uvloop
 import aiodns
 import aiohttp
 import logging
 import requests
+import backoff
 import async_timeout
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.5'
+__version__ = '0.0.6'
+
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 handler = colorlog.StreamHandler()
 formatter = colorlog.ColoredFormatter(
@@ -52,18 +56,19 @@ handler.setFormatter(formatter)
 
 logger = colorlog.getLogger('ESD')
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=['223.5.5.5', '223.6.6.6', '114.114.114.114']):
+    def __init__(self, domain, response_filter=None, dns_servers=None, debug=False):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
-        logger.info(self.project_directory)
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
         self.stable_dns_servers = ['114.114.114.114']
+        if dns_servers is None:
+            dns_servers = ['223.5.5.5', '223.6.6.6', '114.114.114.114']
         random.shuffle(dns_servers)
         self.dns_servers = dns_servers
         self.resolver = None
@@ -96,15 +101,22 @@ class EnumSubDomain(object):
             'Pragma': 'no-cache',
             'Cache-Control': 'no-cache',
             'Upgrade-Insecure-Requests': '1',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36',
+            'User-Agent': 'Baiduspider',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
             'DNT': '1',
-            'Referer': 'http://www.baidu.com/robot',
+            'Referer': 'http://www.baidu.com/',
             'Accept-Encoding': 'gzip, deflate',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
         }
         # Filter the domain's response(regex)
         self.response_filter = response_filter
+        # debug mode
+        self.debug = debug
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+        # collect redirecting domains and response domains
+        self.domains_rs = []
+        self.domains_rs_processed = []
 
     def generate_general_dicts(self, line):
         """
@@ -137,7 +149,11 @@ class EnumSubDomain(object):
         :return:
         """
         dicts = []
-        with open('{pd}/subs.esd'.format(pd=self.project_directory), encoding='utf-8') as f:
+        if self.debug:
+            path = '{pd}/subs-test.esd'.format(pd=self.project_directory)
+        else:
+            path = '{pd}/subs.esd'.format(pd=self.project_directory)
+        with open(path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip().lower()
                 # skip comments and space
@@ -164,7 +180,7 @@ class EnumSubDomain(object):
         """
         ret = None
         # root domain
-        if sub == '@':
+        if sub == '@' or sub == '':
             sub_domain = self.domain
         else:
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
@@ -230,6 +246,7 @@ class EnumSubDomain(object):
             await res
 
     @staticmethod
+    @backoff.on_exception(backoff.expo, TimeoutError, max_tries=3)
     async def fetch(session, url):
         """
         Fetch url response with session
@@ -238,11 +255,12 @@ class EnumSubDomain(object):
         :return:
         """
         try:
-            async with async_timeout.timeout(10):
+            async with async_timeout.timeout(20):
                 async with session.get(url) as response:
-                    return await response.text()
+                    return await response.text(), response.history
         except Exception as e:
-            return None
+            logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
+            return None, None
 
     async def similarity(self, sub):
         """
@@ -250,20 +268,74 @@ class EnumSubDomain(object):
         :param sub:
         :return:
         """
-        sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+        # root domain
+        if sub == '@' or sub == '':
+            sub_domain = self.domain
+        else:
+            sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+        if sub_domain in self.domains_rs:
+            self.domains_rs.remove(sub_domain)
         full_domain = 'http://{sub_domain}'.format(sub_domain=sub_domain)
+        skip_domain_with_history = [
+            '{domain}'.format(domain=self.domain),
+            'www.{domain}'.format(domain=self.domain),
+        ]
         try:
+            regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(d=self.domain)
             resolver = AsyncResolver(nameservers=self.dns_servers)
             conn = aiohttp.TCPConnector(resolver=resolver)
             async with aiohttp.ClientSession(connector=conn, headers=self.request_headers) as session:
-                html = await self.fetch(session, full_domain)
+                html, history = await self.fetch(session, full_domain)
+                if history is not None and len(history) > 0:
+                    location = str(history[-1].headers['location'])
+                    if '.' in location:
+                        location_split = location.split('/')
+                        if len(location_split) > 2:
+                            location = location_split[2]
+                        else:
+                            location = location
+                        try:
+                            location = re.match(regex_domain, location).group(0)
+                        except AttributeError:
+                            location = location
+                        status = history[-1].status
+                        if location in skip_domain_with_history:
+                            logger.warning('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
+                            return
+                        else:
+                            if location[-len(self.domain):] == self.domain:
+                                # collect redirecting's domains
+                                if location not in self.domains_rs:
+                                    if location not in self.domains_rs_processed:
+                                        logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
+                                        self.domains_rs.append(location)
+                                        self.domains_rs_processed.append(location)
+                            else:
+                                logger.info('not same domain: {l}'.format(l=location))
+                    else:
+                        logger.info('not domain(maybe path): {l}'.format(l=location))
                 if html is None:
+                    logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
                     return
+                # collect response html's domains
+                response_domains = re.findall(regex_domain, html)
+                response_domains = list(set(response_domains) - set([sub_domain]))
+                for rd in response_domains:
+                    rd = rd.strip().strip('.')
+                    if sub_domain.count('.') == rd.count('.') and rd[-len(sub_domain):] == sub_domain:
+                        continue
+                    if rd not in self.domains_rs:
+                        if rd not in self.domains_rs_processed:
+                            logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd, l=len(self.domains_rs)))
+                            self.domains_rs.append(rd)
+                            self.domains_rs_processed.append(rd)
+
                 if len(html) == self.wildcard_html_len:
                     ratio = 1
                 else:
                     # SPEED 4 2 1, but here is still the bottleneck
                     # real_quick_ratio() > quick_ratio() > ratio()
+                    # TODO bottleneck
                     ratio = SequenceMatcher(None, html, self.wildcard_html).real_quick_ratio()
                     ratio = round(ratio, 3)
                 self.remainder += -1
@@ -389,6 +461,12 @@ class EnumSubDomain(object):
 
             time_consume_request = int(time.time() - dns_time)
             logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+        # RS(redirect/response) domains
+        while len(self.domains_rs) != 0:
+            logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
+            tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
+            self.loop.run_until_complete(self.start(tasks))
+
         # DNSPod JSONP API
         logger.info('Collect DNSPod JSONP API\'s subdomains...')
         domains = self.dnspod()
@@ -424,6 +502,11 @@ def main():
             response_filter = sys.argv[2].strip()
         else:
             response_filter = None
+        if 'esd' in os.environ:
+            debug = os.environ['esd']
+        else:
+            debug = False
+        logger.info('Debug: {d}'.format(d=debug))
         if os.path.isfile(param):
             with open(param) as fh:
                 for line_domain in fh:
@@ -441,7 +524,7 @@ def main():
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter)
+            esd = EnumSubDomain(d, response_filter, debug=debug)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')

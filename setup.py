@@ -6,6 +6,9 @@
 
     Implements ESD setup
 
+    sudo python setup.py sdist bdist_wheel
+    sudo twine upload dist/ESD-0.0.x
+
     :author:    Feei <feei@feei.cn>
     :homepage:  https://github.com/FeeiCN/ESD
     :license:   GPL, see LICENSE for more details.
@@ -32,7 +35,9 @@ setuptools.setup(
         'aiohttp',
         'async-timeout',
         'colorlog',
-        'requests'
+        'requests',
+        'uvloop',
+        'backoff'
     ],
     classifiers=(
         "Topic :: Security",
