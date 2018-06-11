@@ -33,7 +33,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.6'
+__version__ = '0.0.8'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -62,6 +62,7 @@ logger.setLevel(logging.INFO)
 class EnumSubDomain(object):
     def __init__(self, domain, response_filter=None, dns_servers=None, debug=False):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
+        logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
