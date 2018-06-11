@@ -71,7 +71,7 @@ esd targets.txt
 
 **程序调用**
 ```python
-from ESD.EnumSubDomain import EnumSubDomain
+from ESD import EnumSubDomain
 domains = EnumSubDomain('feei.cn').run()
 ```
 
