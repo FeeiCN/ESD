@@ -33,7 +33,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.8'
+__version__ = '0.0.9'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -323,7 +323,7 @@ class EnumSubDomain(object):
                 response_domains = list(set(response_domains) - set([sub_domain]))
                 for rd in response_domains:
                     rd = rd.strip().strip('.')
-                    if sub_domain.count('.') == rd.count('.') and rd[-len(sub_domain):] == sub_domain:
+                    if rd.count('.') >= sub_domain.count('.') and rd[-len(sub_domain):] == sub_domain:
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
@@ -473,8 +473,11 @@ class EnumSubDomain(object):
         domains = self.dnspod()
         logger.info('DNSPod JSONP API Count: {c}'.format(c=len(domains)))
         # write output
-        output_path_with_time = '{pd}/.{domain}_{time}.esd'.format(pd=self.project_directory, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
-        output_path = '{pd}/.{domain}.esd'.format(pd=self.project_directory, domain=self.domain)
+        tmp_dir = '/tmp/esd'
+        if not os.path.isdir(tmp_dir):
+            os.mkdir(tmp_dir, 0o777)
+        output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
+        output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
         max_domain_len = max(map(len, self.data)) + 2
         output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:

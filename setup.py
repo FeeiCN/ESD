@@ -50,7 +50,7 @@ setuptools.setup(
     },
     entry_points={
         'console_scripts': [
-            'esd=EnumSubDomain:main'
+            'esd=ESD:main'
         ]
     }
 )
