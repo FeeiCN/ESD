@@ -33,7 +33,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.9'
+__version__ = '0.0.10'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -274,6 +274,7 @@ class EnumSubDomain(object):
             sub_domain = self.domain
         else:
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+        print(sub_domain)
         if sub_domain in self.domains_rs:
             self.domains_rs.remove(sub_domain)
         full_domain = 'http://{sub_domain}'.format(sub_domain=sub_domain)
@@ -304,7 +305,8 @@ class EnumSubDomain(object):
                             logger.warning('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
                             return
                         else:
-                            if location[-len(self.domain):] == self.domain:
+                            # cnsuning.com suning.com
+                            if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if location not in self.domains_rs:
                                     if location not in self.domains_rs_processed:
@@ -464,6 +466,7 @@ class EnumSubDomain(object):
             logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
         # RS(redirect/response) domains
         while len(self.domains_rs) != 0:
+            print(self.domains_rs)
             logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
             tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
             self.loop.run_until_complete(self.start(tasks))
