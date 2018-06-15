@@ -46,7 +46,11 @@
 ## 使用
 仅在Python3下验证过
 ```bash
+# 安装
 pip install esd
+
+# 升级
+pip install esd --upgrade
 ```
 **CLI命令行使用**
 ```bash
