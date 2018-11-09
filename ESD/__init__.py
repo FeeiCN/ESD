@@ -479,7 +479,10 @@ class EnumSubDomain(object):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
-        max_domain_len = max(map(len, self.data)) + 2
+        if len(domains) == 0:
+            max_domain_len = 2
+        elif len(domains) > 0:
+            max_domain_len = max(map(len, self.data)) + 2
         output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
             for domain, ips in self.data.items():
