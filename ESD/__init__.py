@@ -33,7 +33,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.11'
+__version__ = '0.0.12'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -80,11 +80,14 @@ class EnumSubDomain(object):
         # Use a nonexistent domain name to determine whether
         # there is a pan-resolve based on the DNS resolution result
         self.wildcard_sub = 'feei-esd-{random}'.format(random=random.randint(0, 9999))
+        self.wildcard_sub3 = 'feei-esd-{random}.{random}'.format(random=random.randint(0, 9999))
         # There is no domain name DNS resolution IP
         self.wildcard_ips = []
         # No domain name response HTML
         self.wildcard_html = None
         self.wildcard_html_len = 0
+        self.wildcard_html3 = None
+        self.wildcard_html3_len = 0
         # Subdomains that are consistent with IPs that do not have domain names
         self.wildcard_subs = []
         # Wildcard domains use RSC
@@ -96,7 +99,7 @@ class EnumSubDomain(object):
         # RSC ratio
         self.rsc_ratio = 0.8
         self.remainder = 0
-        # Reuqest Header
+        # Request Header
         self.request_headers = {
             'Connection': 'keep-alive',
             'Pragma': 'no-cache',
@@ -338,8 +341,12 @@ class EnumSubDomain(object):
                     # SPEED 4 2 1, but here is still the bottleneck
                     # real_quick_ratio() > quick_ratio() > ratio()
                     # TODO bottleneck
-                    ratio = SequenceMatcher(None, html, self.wildcard_html).real_quick_ratio()
-                    ratio = round(ratio, 3)
+                    if sub.count('.') == 0:  # secondary sub, ex: www
+                        ratio = SequenceMatcher(None, html, self.wildcard_html).real_quick_ratio()
+                        ratio = round(ratio, 3)
+                    else:  # tertiary sub, ex: home.dev
+                        ratio = SequenceMatcher(None, html, self.wildcard_html3).real_quick_ratio()
+                        ratio = round(ratio, 3)
                 self.remainder += -1
                 if ratio > self.rsc_ratio:
                     # passed
@@ -432,6 +439,8 @@ class EnumSubDomain(object):
             try:
                 self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10).text
                 self.wildcard_html_len = len(self.wildcard_html)
+                self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10).text
+                self.wildcard_html3_len = len(self.wildcard_html3)
                 logger.debug('Wildcard domain response html length: {len}'.format(len=self.wildcard_html_len))
             except requests.exceptions.ConnectTimeout:
                 logger.warning('Request response content failed, check network please!')
