@@ -33,7 +33,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.13'
+__version__ = '0.0.12'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -388,7 +388,7 @@ class EnumSubDomain(object):
         :return:
         """
         try:
-            content = requests.get('http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain), timeout=5).text
+            content = requests.get('http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain)).text
             domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
             domains = list(set(domains))
             tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
@@ -442,8 +442,6 @@ class EnumSubDomain(object):
                 self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10).text
                 self.wildcard_html3_len = len(self.wildcard_html3)
                 logger.debug('Wildcard domain response html length: {len}'.format(len=self.wildcard_html_len))
-            except requests.exceptions.SSLError:
-                logger.warning('SSL Certificate Error!')
             except requests.exceptions.ConnectTimeout:
                 logger.warning('Request response content failed, check network please!')
         else:
