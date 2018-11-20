@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import time
+import ssl
 import string
 import random
 import traceback
@@ -58,6 +59,8 @@ logger = colorlog.getLogger('ESD')
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
+ssl.match_hostname = lambda cert, hostname: True
+
 
 class EnumSubDomain(object):
     def __init__(self, domain, response_filter=None, dns_servers=None, debug=False):
@@ -67,9 +70,9 @@ class EnumSubDomain(object):
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
-        self.stable_dns_servers = ['114.114.114.114']
+        self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
-            dns_servers = ['223.5.5.5', '223.6.6.6', '114.114.114.114']
+            dns_servers = ['223.5.5.5', '223.6.6.6', '1.1.1.1']
         random.shuffle(dns_servers)
         self.dns_servers = dns_servers
         self.resolver = None
@@ -353,7 +356,8 @@ class EnumSubDomain(object):
                     logger.debug('{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
                 else:
                     # added
-                    self.wildcard_domains[sub_domain] = html
+                    # for def distinct func
+                    # self.wildcard_domains[sub_domain] = html
                     if self.response_filter is not None:
                         for resp_filter in self.response_filter.split(','):
                             if resp_filter in html:
@@ -414,7 +418,7 @@ class EnumSubDomain(object):
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
-            logger.info('{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
+            logger.info('@{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
             if ret is None:
                 ret = None
             else:
@@ -437,11 +441,11 @@ class EnumSubDomain(object):
                 self.wildcard_ips = stable_dns[0]
             logger.info('Wildcard IPS: {ips}'.format(ips=self.wildcard_ips))
             try:
-                self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10).text
+                self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
                 self.wildcard_html_len = len(self.wildcard_html)
-                self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10).text
+                self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
                 self.wildcard_html3_len = len(self.wildcard_html3)
-                logger.debug('Wildcard domain response html length: {len}'.format(len=self.wildcard_html_len))
+                logger.info('Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
             except requests.exceptions.SSLError:
                 logger.warning('SSL Certificate Error!')
             except requests.exceptions.ConnectTimeout:
@@ -496,7 +500,11 @@ class EnumSubDomain(object):
             for domain, ips in self.data.items():
                 # The format is consistent with other scanners to ensure that they are
                 # invoked at the same time without increasing the cost of resolution
-                con = output_format % (domain, ','.join(ips))
+                if ips is None or len(ips) == 0:
+                    ips_split = ''
+                else:
+                    ips_split = ','.join(ips)
+                con = output_format % (domain, ips_split)
                 op.write(con)
                 opt.write(con)
         logger.info('Output: {op}'.format(op=output_path))
