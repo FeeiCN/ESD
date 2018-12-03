@@ -34,7 +34,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.14'
+__version__ = '0.0.15'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -72,7 +72,15 @@ class EnumSubDomain(object):
         self.domain = domain
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
-            dns_servers = ['223.5.5.5', '223.6.6.6', '1.1.1.1']
+            dns_servers = [
+                '223.5.5.5',  # AliDNS
+                '114.114.114.114',  # 114DNS
+                '1.1.1.1',  # Cloudflare
+                '119.29.29.29',  # DNSPod
+                '1.2.4.8',  # sDNS
+                # '8.8.8.8', # Google DNS, 延时太高了
+            ]
+
         random.shuffle(dns_servers)
         self.dns_servers = dns_servers
         self.resolver = None
@@ -199,7 +207,7 @@ class EnumSubDomain(object):
             # the subdomain IP that is burst is consistent with the IP
             # that does not exist in the domain name resolution,
             # the response similarity is discarded for further processing.
-            if self.is_wildcard_domain and sorted(self.wildcard_ips) == sorted(domain_ips):
+            if self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
                 logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
                 if sub != self.wildcard_sub:
@@ -401,6 +409,68 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
+    def get_till_cname(self, sub, ns):
+        try:
+            loop = asyncio.new_event_loop()
+            resolver = aiodns.DNSResolver(loop=loop, nameservers=ns)
+            job = resolver.query(sub, 'A')
+            ips = loop.run_until_complete(job)
+            cname = None
+            if len(ips) == 0:
+                while len(ips) == 0:
+                    job = resolver.query(sub, 'CNAME')
+                    cname = loop.run_until_complete(job)
+                    if len(cname) == 0:
+                        return sub
+                    else:
+                        sub = cname.cname
+                        job = resolver.query(cname.cname, 'A')
+                        ips = loop.run_until_complete(job)
+                return cname.cname
+            else:
+                return sub
+        except aiodns.error.DNSError:
+            logger.warning("Connect DNS Error when resolve CNAME")
+            return sub
+        except Exception as e:
+            logger.error(e)
+            exit()
+
+    def get_all_random_resolver(self, sub):
+        loop = asyncio.new_event_loop()
+
+        # 一系列步骤只为了取得它的权威 NS 服务器 IP 地址
+        ns_ips = list()
+        resolver = aiodns.DNSResolver(loop=loop, nameservers=self.dns_servers)
+        job = resolver.query(self.domain, 'NS')
+        ns_list = loop.run_until_complete(job)
+        for ns in ns_list:
+            job = resolver.query(ns.host, 'A')
+            ns_result = loop.run_until_complete(job)
+            ns_list = list()
+            for ns_ip in ns_result:
+                ns_list.append(ns_ip.host)
+            ns_ips += ns_list
+            logger.info('{ns} {ips}'.format(ns=ns.host, ips=ns_list))
+
+        # 遍历随机解析的 IP 地址
+        ret_ips = list()
+        cname = self.get_till_cname(sub, ns_ips)
+        resolver = aiodns.DNSResolver(loop=loop, nameservers=ns_ips)
+        for x in range(0, 200):
+            try:
+                job = resolver.query(cname, 'A')
+                ips = loop.run_until_complete(job)
+            except aiodns.error.DNSError:
+                continue
+            for ip in ips:
+                if ip and ip.host not in ret_ips:
+                    ret_ips.append(ip.host)
+                    logger.info('Discover the IP address of the subdomain: {ips}'.format(ips=ip[0]))
+
+        logger.info('@{dns} {cname} {ips}'.format(dns=ns_ips, cname=cname, ips=ret_ips))
+        return ret_ips
+
     def run(self):
         """
         Run
@@ -414,6 +484,7 @@ class EnumSubDomain(object):
         # Verify that all DNS server results are consistent
         stable_dns = []
         wildcard_ips = None
+        last_dns = []
         for dns in self.dns_servers:
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
             job = self.query(self.wildcard_sub)
@@ -423,9 +494,24 @@ class EnumSubDomain(object):
                 ret = None
             else:
                 ret = sorted(ret)
+
             if dns in self.stable_dns_servers:
                 wildcard_ips = ret
             stable_dns.append(ret)
+
+            if ret:
+                equal = [False for r in ret if r not in last_dns]
+                if len(last_dns) != 0 and False in equal:
+                    logger.info('{sub} is a random resolve subdomain'.format(sub=sub))
+                    ret = self.get_all_random_resolver('{sub}.{domain}'.format(sub=sub, domain=self.domain))
+                    ret = sorted(ret)
+                    wildcard_ips = ret
+                    stable_dns.clear()
+                    stable_dns.append(ret)
+                    break
+                else:
+                    last_dns = ret
+
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
             logger.info('Is all stable dns: NO, use the default dns server')
