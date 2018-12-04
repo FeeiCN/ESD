@@ -187,7 +187,7 @@ class EnumSubDomain(object):
         dicts.append('@')
         return dicts
 
-    async def query(self, sub):
+    async def query(self, sub, only_similarity=False):
         """
         Query domain
         :param sub:
@@ -210,7 +210,7 @@ class EnumSubDomain(object):
             if self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
                 logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                if sub != self.wildcard_sub:
+                if sub != self.wildcard_sub or only_similarity:
                     self.data[sub_domain] = sorted(domain_ips)
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         except aiodns.error.DNSError as e:
@@ -409,69 +409,6 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
-    def get_till_cname(self, sub, ns):
-        try:
-            loop = asyncio.new_event_loop()
-            resolver = aiodns.DNSResolver(loop=loop, nameservers=ns)
-            job = resolver.query(sub, 'A')
-            ips = loop.run_until_complete(job)
-            cname = None
-            if len(ips) == 0:
-                while len(ips) == 0:
-                    job = resolver.query(sub, 'CNAME')
-                    cname = loop.run_until_complete(job)
-                    if len(cname) == 0:
-                        return sub
-                    else:
-                        sub = cname.cname
-                        job = resolver.query(cname.cname, 'A')
-                        ips = loop.run_until_complete(job)
-                return cname.cname
-            else:
-                return sub
-        except aiodns.error.DNSError:
-            logger.warning("Connect DNS Error when resolve CNAME")
-            return sub
-        except Exception as e:
-            logger.error(e)
-            exit()
-
-    def get_all_random_resolver(self, sub):
-        loop = asyncio.new_event_loop()
-
-        # 一系列步骤只为了取得它的权威 NS 服务器 IP 地址
-        ns_ips = list()
-        resolver = aiodns.DNSResolver(loop=loop, nameservers=self.dns_servers)
-        job = resolver.query(self.domain, 'NS')
-        ns_list = loop.run_until_complete(job)
-        for ns in ns_list:
-            job = resolver.query(ns.host, 'A')
-            ns_result = loop.run_until_complete(job)
-            ns_list = list()
-            for ns_ip in ns_result:
-                ns_list.append(ns_ip.host)
-            ns_ips += ns_list
-            ns_ips = list(set(ns_ips))
-            logger.info('{ns} {ips}'.format(ns=ns.host, ips=ns_list))
-
-        # 遍历随机解析的 IP 地址
-        ret_ips = list()
-        cname = self.get_till_cname(sub, self.dns_servers)
-        resolver = aiodns.DNSResolver(loop=loop, nameservers=ns_ips)
-        for x in range(0, 200):
-            try:
-                job = resolver.query(cname, 'A')
-                ips = loop.run_until_complete(job)
-            except aiodns.error.DNSError:
-                continue
-            for ip in ips:
-                if ip and ip.host not in ret_ips:
-                    ret_ips.append(ip.host)
-                    logger.info('Discover the IP address of the subdomain: {ips}'.format(ips=ip[0]))
-
-        logger.info('@{dns} {cname} {ips}'.format(dns=ns_ips, cname=cname, ips=ret_ips))
-        return ret_ips
-
     def run(self):
         """
         Run
@@ -486,6 +423,7 @@ class EnumSubDomain(object):
         stable_dns = []
         wildcard_ips = None
         last_dns = []
+        only_similarity = False
         for dns in self.dns_servers:
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
             job = self.query(self.wildcard_sub)
@@ -503,11 +441,7 @@ class EnumSubDomain(object):
             if ret:
                 equal = [False for r in ret if r not in last_dns]
                 if len(last_dns) != 0 and False in equal:
-                    logger.info('{sub} is a random resolve subdomain'.format(sub=sub))
-                    ret = self.get_all_random_resolver('{sub}.{domain}'.format(sub=sub, domain=self.domain))
-                    wildcard_ips = ret = sorted(ret)
-                    stable_dns.clear()
-                    stable_dns.append(ret)
+                    only_similarity = True
                     break
                 else:
                     last_dns = ret
@@ -539,7 +473,7 @@ class EnumSubDomain(object):
         else:
             logger.info('Not a wildcard domain')
         self.coroutine_count = self.coroutine_count_dns
-        tasks = (self.query(sub) for sub in subs)
+        tasks = (self.query(sub, only_similarity) for sub in subs)
         self.loop.run_until_complete(self.start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
