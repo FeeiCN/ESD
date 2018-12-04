@@ -34,7 +34,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.15'
+__version__ = '0.0.16'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -276,6 +276,7 @@ class EnumSubDomain(object):
                 async with session.get(url) as response:
                     return await response.text(), response.history
         except Exception as e:
+            # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
             logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
             return None, None
 
