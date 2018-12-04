@@ -107,6 +107,8 @@ class EnumSubDomain(object):
         self.coroutine_count = None
         self.coroutine_count_dns = 100000
         self.coroutine_count_request = 100
+        # dnsaio resolve timeout
+        self.resolve_timeout = 2
         # RSC ratio
         self.rsc_ratio = 0.8
         self.remainder = 0
@@ -187,7 +189,7 @@ class EnumSubDomain(object):
         dicts.append('@')
         return dicts
 
-    async def query(self, sub, only_similarity=False):
+    async def query(self, sub):
         """
         Query domain
         :param sub:
@@ -210,7 +212,7 @@ class EnumSubDomain(object):
             if self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
                 logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                if sub != self.wildcard_sub or only_similarity:
+                if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         except aiodns.error.DNSError as e:
@@ -425,7 +427,7 @@ class EnumSubDomain(object):
         last_dns = []
         only_similarity = False
         for dns in self.dns_servers:
-            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns])
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
             logger.info('@{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
@@ -442,6 +444,7 @@ class EnumSubDomain(object):
                 equal = [False for r in ret if r not in last_dns]
                 if len(last_dns) != 0 and False in equal:
                     only_similarity = True
+                    logger.info('Is a random resolve subdomain.')
                     break
                 else:
                     last_dns = ret
@@ -449,7 +452,7 @@ class EnumSubDomain(object):
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
             logger.info('Is all stable dns: NO, use the default dns server')
-            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers)
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers, timeout=self.resolve_timeout)
         # Wildcard domain
         is_wildcard_domain = not (stable_dns.count(None) == len(stable_dns))
         if is_wildcard_domain:
@@ -472,9 +475,11 @@ class EnumSubDomain(object):
                 logger.warning('Request response content failed, check network please!')
         else:
             logger.info('Not a wildcard domain')
-        self.coroutine_count = self.coroutine_count_dns
-        tasks = (self.query(sub, only_similarity) for sub in subs)
-        self.loop.run_until_complete(self.start(tasks))
+
+        if not only_similarity:
+            self.coroutine_count = self.coroutine_count_dns
+            tasks = (self.query(sub) for sub in subs)
+            self.loop.run_until_complete(self.start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
