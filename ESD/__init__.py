@@ -451,11 +451,12 @@ class EnumSubDomain(object):
             for ns_ip in ns_result:
                 ns_list.append(ns_ip.host)
             ns_ips += ns_list
+            ns_ips = list(set(ns_ips))
             logger.info('{ns} {ips}'.format(ns=ns.host, ips=ns_list))
 
         # 遍历随机解析的 IP 地址
         ret_ips = list()
-        cname = self.get_till_cname(sub, ns_ips)
+        cname = self.get_till_cname(sub, self.dns_servers)
         resolver = aiodns.DNSResolver(loop=loop, nameservers=ns_ips)
         for x in range(0, 200):
             try:
@@ -504,8 +505,7 @@ class EnumSubDomain(object):
                 if len(last_dns) != 0 and False in equal:
                     logger.info('{sub} is a random resolve subdomain'.format(sub=sub))
                     ret = self.get_all_random_resolver('{sub}.{domain}'.format(sub=sub, domain=self.domain))
-                    ret = sorted(ret)
-                    wildcard_ips = ret
+                    wildcard_ips = ret = sorted(ret)
                     stable_dns.clear()
                     stable_dns.append(ret)
                     break
