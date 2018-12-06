@@ -298,9 +298,13 @@ class EnumSubDomain(object):
         if sub_domain in self.domains_rs:
             self.domains_rs.remove(sub_domain)
         full_domain = 'http://{sub_domain}'.format(sub_domain=sub_domain)
+        # 如果跳转中的域名是以下情况则不加入下一轮RSC
         skip_domain_with_history = [
+            # 跳到主域名了
             '{domain}'.format(domain=self.domain),
             'www.{domain}'.format(domain=self.domain),
+            # 跳到自己本身了，比如HTTP跳HTTPS
+            '{domain}'.format(domain=sub_domain),
         ]
         try:
             regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(d=self.domain)
@@ -322,7 +326,7 @@ class EnumSubDomain(object):
                             location = location
                         status = history[-1].status
                         if location in skip_domain_with_history:
-                            logger.warning('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
+                            logger.debug('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
                             return
                         else:
                             # cnsuning.com suning.com
