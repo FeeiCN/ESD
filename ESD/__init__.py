@@ -448,11 +448,9 @@ class EnumSubDomain(object):
             if ret:
                 equal = [False for r in ret if r not in last_dns]
                 if len(last_dns) != 0 and False in equal:
-                    only_similarity = True
-                    if not self.is_wildcard_domain:
-                        logger.info('Is a random resolve subdomain.')
-                    self.is_wildcard_domain = True
-                    #break
+                    only_similarity = self.is_wildcard_domain = True
+                    logger.info('Is a random resolve subdomain.')
+                    break
                 else:
                     last_dns = ret
 
@@ -466,31 +464,32 @@ class EnumSubDomain(object):
             if not self.skip_rsc:
                 logger.info('This is a wildcard domain, will enumeration subdomains use by DNS+RSC.')
             else:
-                logger.info('This is a wildcard domain, but it is --skip-rsc mode now, it will be drop all subdomains in results')
+                logger.info('This is a wildcard domain, but it is --skip-rsc mode now, it will be drop all random resolve subdomains in results')
             self.is_wildcard_domain = True
             if wildcard_ips is not None:
                 self.wildcard_ips = wildcard_ips
             else:
                 self.wildcard_ips = stable_dns[0]
             logger.info('Wildcard IPS: {ips}'.format(ips=self.wildcard_ips))
-            try:
-                self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
-                self.wildcard_html_len = len(self.wildcard_html)
-                self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
-                self.wildcard_html3_len = len(self.wildcard_html3)
-                logger.info('Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
-            except requests.exceptions.SSLError:
-                logger.warning('SSL Certificate Error!')
-            except requests.exceptions.ConnectTimeout:
-                logger.warning('Request response content failed, check network please!')
-            except requests.exceptions.ReadTimeout:
-                self.wildcard_html = self.wildcard_html3 = ''
-                self.wildcard_html_len = self.wildcard_html3_len = 0
-                logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub, domain=self.domain, w_sub3=self.wildcard_sub3))
+            if not self.skip_rsc:
+                try:
+                    self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
+                    self.wildcard_html_len = len(self.wildcard_html)
+                    self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
+                    self.wildcard_html3_len = len(self.wildcard_html3)
+                    logger.info('Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
+                except requests.exceptions.SSLError:
+                    logger.warning('SSL Certificate Error!')
+                except requests.exceptions.ConnectTimeout:
+                    logger.warning('Request response content failed, check network please!')
+                except requests.exceptions.ReadTimeout:
+                    self.wildcard_html = self.wildcard_html3 = ''
+                    self.wildcard_html_len = self.wildcard_html3_len = 0
+                    logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub, domain=self.domain, w_sub3=self.wildcard_sub3))
         else:
             logger.info('Not a wildcard domain')
 
-        if not only_similarity or self.skip_rsc:
+        if not only_similarity:
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
             self.loop.run_until_complete(self.start(tasks))
@@ -600,7 +599,7 @@ def main():
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=True)
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
