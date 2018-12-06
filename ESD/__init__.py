@@ -34,7 +34,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.15'
+__version__ = '0.0.17'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -63,13 +63,14 @@ ssl.match_hostname = lambda cert, hostname: True
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, debug=False):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.data = {}
         self.domain = domain
+        self.skip_rsc = skip_rsc
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -210,7 +211,10 @@ class EnumSubDomain(object):
             # that does not exist in the domain name resolution,
             # the response similarity is discarded for further processing.
             if self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
-                logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+                if self.skip_rsc:
+                    logger.debug('{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(sub=sub_domain))
+                else:
+                    logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
                 if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
@@ -444,8 +448,10 @@ class EnumSubDomain(object):
                 equal = [False for r in ret if r not in last_dns]
                 if len(last_dns) != 0 and False in equal:
                     only_similarity = True
-                    logger.info('Is a random resolve subdomain.')
-                    break
+                    if not self.is_wildcard_domain:
+                        logger.info('Is a random resolve subdomain.')
+                    self.is_wildcard_domain = True
+                    #break
                 else:
                     last_dns = ret
 
@@ -455,8 +461,11 @@ class EnumSubDomain(object):
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers, timeout=self.resolve_timeout)
         # Wildcard domain
         is_wildcard_domain = not (stable_dns.count(None) == len(stable_dns))
-        if is_wildcard_domain:
-            logger.info('This is a wildcard domain, will enumeration subdomains use by DNS+RSC.')
+        if is_wildcard_domain or self.is_wildcard_domain:
+            if not self.skip_rsc:
+                logger.info('This is a wildcard domain, will enumeration subdomains use by DNS+RSC.')
+            else:
+                logger.info('This is a wildcard domain, but it is --skip-rsc mode now, it will be drop all subdomains in results')
             self.is_wildcard_domain = True
             if wildcard_ips is not None:
                 self.wildcard_ips = wildcard_ips
@@ -473,17 +482,21 @@ class EnumSubDomain(object):
                 logger.warning('SSL Certificate Error!')
             except requests.exceptions.ConnectTimeout:
                 logger.warning('Request response content failed, check network please!')
+            except requests.exceptions.ReadTimeout:
+                self.wildcard_html = self.wildcard_html3 = ''
+                self.wildcard_html_len = self.wildcard_html3_len = 0
+                logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub, domain=self.domain, w_sub3=self.wildcard_sub3))
         else:
             logger.info('Not a wildcard domain')
 
-        if not only_similarity:
+        if not only_similarity or self.skip_rsc:
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
             self.loop.run_until_complete(self.start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
-        if self.is_wildcard_domain:
+        if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
             dns_subs = []
             for domain, ips in self.data.items():
@@ -519,10 +532,14 @@ class EnumSubDomain(object):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
-        max_domain_len = max(map(len, self.data)) + 2
+        if len(self.data):
+            max_domain_len = max(map(len, self.data)) + 2
+        else:
+            max_domain_len = 2
         output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
             for domain, ips in self.data.items():
+
                 # The format is consistent with other scanners to ensure that they are
                 # invoked at the same time without increasing the cost of resolution
                 if ips is None or len(ips) == 0:
@@ -543,12 +560,20 @@ class EnumSubDomain(object):
 def main():
     try:
         if len(sys.argv) < 2:
-            logger.info("Usage: python ESD.py feei.cn")
+            logger.info("Usage: python ESD.py feei.cn [response filter] [--skip-rsc]")
             exit(0)
         domains = []
         param = sys.argv[1].strip()
+        skip_rsc = False
+        response_filter = None
         if len(sys.argv) >= 3:
-            response_filter = sys.argv[2].strip()
+            if sys.argv[2].strip().startswith('--skip-rsc'):
+                skip_rsc = True
+            else:
+                response_filter = sys.argv[2].strip()
+            for i in range(3, len(sys.argv)):
+                if sys.argv[i].strip().startswith('--skip-rsc'):
+                    skip_rsc = True
         else:
             response_filter = None
         if 'esd' in os.environ:
@@ -556,6 +581,7 @@ def main():
         else:
             debug = False
         logger.info('Debug: {d}'.format(d=debug))
+        logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
         if os.path.isfile(param):
             with open(param) as fh:
                 for line_domain in fh:
@@ -573,7 +599,7 @@ def main():
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, debug=debug)
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=True)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
