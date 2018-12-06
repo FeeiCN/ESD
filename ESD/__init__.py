@@ -280,6 +280,7 @@ class EnumSubDomain(object):
                 async with session.get(url) as response:
                     return await response.text(), response.history
         except Exception as e:
+            # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
             logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
             return None, None
 
