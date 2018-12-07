@@ -37,7 +37,8 @@ setuptools.setup(
         'colorlog',
         'requests',
         'uvloop',
-        'backoff'
+        'backoff',
+        'dnspython'
     ],
     classifiers=(
         "Topic :: Security",
