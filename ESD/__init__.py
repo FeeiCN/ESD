@@ -31,11 +31,14 @@ import requests
 import backoff
 import socket
 import async_timeout
+import dns.query
+import dns.zone
+import dns.resolver
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.18'
+__version__ = '0.0.19'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -61,6 +64,32 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 ssl.match_hostname = lambda cert, hostname: True
+
+class DNSTransfer(object):
+    def __init__(self, domain):
+        self.domain = domain
+
+    def transfer_info(self):
+        ret_zones = list()
+        try:
+            nss = dns.resolver.query(self.domain, 'NS')
+            nameservers = [str(ns) for ns in nss]
+            ns_addr = dns.resolver.query(nameservers[0], 'A')
+            # dnspython 的 bug，需要设置 lifetime 参数
+            zones = dns.zone.from_xfr(dns.query.xfr(ns_addr, self.domain, relativize=False, timeout=2, lifetime=2), check_origin=False)
+            names = zones.nodes.keys()
+            for n in names:
+                subdomain = ''
+                for t in range(0, len(n) - 1):
+                    if subdomain != '':
+                        subdomain += '.'
+                    subdomain += str(n[t].decode())
+                if subdomain != self.domain:
+                    ret_zones.append(subdomain)
+            return ret_zones
+        except:
+            return list()
+
 
 class CAInfo(object):
     def __init__(self, domain):
@@ -581,6 +610,15 @@ class EnumSubDomain(object):
         tasks = (self.query(sub) for sub in ca_subdomains)
         self.loop.run_until_complete(self.start(tasks))
         logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
+
+        # DNS Transfer Vulnerability
+        logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
+        transfer_info = DNSTransfer(self.domain).transfer_info()
+        if len(transfer_info):
+            logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
+            tasks = (self.query(sub) for sub in transfer_info)
+            self.loop.run_until_complete(self.start(tasks))
+        logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
         # write output
         tmp_dir = '/tmp/esd'
