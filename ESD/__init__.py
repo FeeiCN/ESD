@@ -78,11 +78,11 @@ class CAInfo(object):
 
     def get_cert_info_by_ip(self, ip):
         s = socket.socket()
-        s.settimeout(10)
+        s.settimeout(2)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cert_path = base_dir + '/cacert.pem'
         connect = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
-        connect.settimeout(10)
+        connect.settimeout(2)
         connect.connect((ip, 443))
         cert_data = connect.getpeercert().get('subjectAltName')
         return cert_data
