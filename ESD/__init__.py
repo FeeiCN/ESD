@@ -29,12 +29,16 @@ import aiohttp
 import logging
 import requests
 import backoff
+import socket
 import async_timeout
+import dns.query
+import dns.zone
+import dns.resolver
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.17'
+__version__ = '0.0.18'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -60,6 +64,79 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 ssl.match_hostname = lambda cert, hostname: True
+
+class DNSTransfer(object):
+    def __init__(self, domain):
+        self.domain = domain
+
+    def transfer_info(self):
+        ret_zones = list()
+        try:
+            nss = dns.resolver.query(self.domain, 'NS')
+            nameservers = [str(ns) for ns in nss]
+            ns_addr = dns.resolver.query(nameservers[0], 'A')
+            # dnspython 的 bug，需要设置 lifetime 参数
+            zones = dns.zone.from_xfr(dns.query.xfr(ns_addr, self.domain, relativize=False, timeout=2, lifetime=2), check_origin=False)
+            names = zones.nodes.keys()
+            for n in names:
+                subdomain = ''
+                for t in range(0, len(n) - 1):
+                    if subdomain != '':
+                        subdomain += '.'
+                    subdomain += str(n[t].decode())
+                if subdomain != self.domain:
+                    ret_zones.append(subdomain)
+            return ret_zones
+        except:
+            return []
+
+
+class CAInfo(object):
+    def __init__(self, domain):
+        self.domain = domain
+
+    def dns_resolve(self):
+        padding_domain = 'www.' + self.domain
+        # loop = asyncio.get_event_loop()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        resolver = aiodns.DNSResolver(loop=loop)
+        f = resolver.query(padding_domain, 'A')
+        result = loop.run_until_complete(f)
+        return result[0].host
+
+    def get_cert_info_by_ip(self, ip):
+        s = socket.socket()
+        s.settimeout(2)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cert_path = base_dir + '/cacert.pem'
+        connect = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
+        connect.settimeout(2)
+        connect.connect((ip, 443))
+        cert_data = connect.getpeercert().get('subjectAltName')
+        return cert_data
+
+    def get_ca_domain_info(self):
+        domain_list = list()
+        try:
+            ip = self.dns_resolve()
+            cert_data = self.get_cert_info_by_ip(ip)
+        except Exception as e:
+            return domain_list
+
+        for domain_info in cert_data:
+            hostname = domain_info[1]
+            if not hostname.startswith('*') and hostname.endswith(self.domain):
+                domain_list.append(hostname)
+
+        return domain_list
+
+    def get_subdomains(self):
+        subs = list()
+        subdomain_list = self.get_ca_domain_info()
+        for sub in subdomain_list:
+            subs.append(sub[:len(sub) - len(self.domain) - 1])
+        return subs
 
 
 class EnumSubDomain(object):
@@ -530,6 +607,23 @@ class EnumSubDomain(object):
         logger.info('Collect DNSPod JSONP API\'s subdomains...')
         domains = self.dnspod()
         logger.info('DNSPod JSONP API Count: {c}'.format(c=len(domains)))
+
+        # CA subdomain info
+        logger.info('Collect subdomains in CA...')
+        ca_subdomains = CAInfo(self.domain).get_subdomains()
+        tasks = (self.query(sub) for sub in ca_subdomains)
+        self.loop.run_until_complete(self.start(tasks))
+        logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
+
+        # DNS Transfer Vulnerability
+        logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
+        transfer_info = DNSTransfer(self.domain).transfer_info()
+        if len(transfer_info):
+            logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
+            tasks = (self.query(sub) for sub in transfer_info)
+            self.loop.run_until_complete(self.start(tasks))
+        logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
+
         # write output
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
