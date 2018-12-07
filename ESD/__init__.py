@@ -38,7 +38,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.19'
+__version__ = '0.0.18'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -88,7 +88,7 @@ class DNSTransfer(object):
                     ret_zones.append(subdomain)
             return ret_zones
         except:
-            return list()
+            return []
 
 
 class CAInfo(object):
