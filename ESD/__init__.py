@@ -344,6 +344,15 @@ class EnumSubDomain(object):
             await res
 
     @staticmethod
+    def data_clean(data):
+        try:
+            html = re.sub(r'\s', '', data)
+            html = re.sub(r'<script(?!src=).*?>.*?</script>', '', html)
+            return html
+        except:
+            return data
+
+    @staticmethod
     @backoff.on_exception(backoff.expo, TimeoutError, max_tries=3)
     async def fetch(session, url):
         """
@@ -385,6 +394,7 @@ class EnumSubDomain(object):
             conn = aiohttp.TCPConnector(resolver=resolver)
             async with aiohttp.ClientSession(connector=conn, headers=self.request_headers) as session:
                 html, history = await self.fetch(session, full_domain)
+                html = self.data_clean(html)
                 if history is not None and len(history) > 0:
                     location = str(history[-1].headers['location'])
                     if '.' in location:
@@ -551,8 +561,10 @@ class EnumSubDomain(object):
             if not self.skip_rsc:
                 try:
                     self.wildcard_html = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
+                    self.wildcard_html = self.data_clean(self.wildcard_html)
                     self.wildcard_html_len = len(self.wildcard_html)
                     self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
+                    self.wildcard_html3 = self.data_clean(self.wildcard_html3)
                     self.wildcard_html3_len = len(self.wildcard_html3)
                     logger.info('Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
                 except requests.exceptions.SSLError:
