@@ -347,7 +347,7 @@ class EnumSubDomain(object):
     def data_clean(data):
         try:
             html = re.sub(r'\s', '', data)
-            html = re.sub(r'<script(?!src=).*?>.*?</script>', '', html)
+            html = re.sub(r'<script(?!.*?src=).*?>.*?</script>', '', html)
             return html
         except:
             return data
