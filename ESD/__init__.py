@@ -38,7 +38,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.19'
+__version__ = '0.0.20'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
