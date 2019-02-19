@@ -34,11 +34,16 @@ import async_timeout
 import dns.query
 import dns.zone
 import dns.resolver
+import multiprocessing
+import threading
+import urllib.parse as urlparse
+import urllib.parse as urllib
+from collections import Counter
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.20'
+__version__ = '0.0.21'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -138,13 +143,474 @@ class CAInfo(object):
             subs.append(sub[:len(sub) - len(self.domain) - 1])
         return subs
 
+class Google(multiprocessing.Process):
+    def __init__(self, domain, q, verbose):
+        self.base_url = "https://www.google.com/search?q=site:{domain}+-www.{domain}&start={page_no}"
+        self.lock = threading.Lock()
+        self.q = q
+        self.MAX_DOMAINS = 11
+        self.MAX_PAGES = 200
+        self.subdomains = []
+        self.engine_name = 'Google'
+        self.domain = domain
+        self.session = requests.Session()
+        self.headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
+        }
+        self.timeout = 30
+        self.verbose = verbose
+        multiprocessing.Process.__init__(self)
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def extract_domains(self, resp):
+        links_list = list()
+        link_regx = re.compile('<cite.*?>(.*?)<\/cite>')
+        try:
+            links_list = link_regx.findall(resp)
+            for link in links_list:
+                link = re.sub('<span.*>', '', link)
+                if not link.startswith('http'):
+                    link = "http://" + link
+                subdomain = urlparse.urlparse(link).netloc
+                if subdomain and subdomain not in self.subdomains and subdomain != self.domain:
+                    logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                    self.subdomains.append(subdomain.strip())
+        except Exception:
+            pass
+        return links_list
+
+    def check_response_errors(self, resp):
+        if 'Our systems have detected unusual traffic' in resp:
+            self.print_(R + "[!] Error: Google probably now is blocking our requests" + W)
+            self.print_(R + "[~] Finished now the Google Enumeration ..." + W)
+            return False
+        return True
+
+    def should_sleep(self):
+        time.sleep(5)
+        return
+
+    def print_(self, text):
+        print(text)
+        return
+
+    def get_page(self, num):
+        return num + 10
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def check_max_pages(self,num):
+        if self.MAX_PAGES == 0:
+            return False
+        return num >= self.MAX_PAGES
+
+    def send_req(self, page_no=1):
+        url = self.base_url.format(domain=self.domain, page_no=page_no)
+        try:
+            #因为总所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            proxies = {
+                "http": "socks5://127.0.0.1:1080",
+                "https": "socks5://127.0.0.1:1080",
+                }
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
+        except Exception as e:
+            resp = None
+        
+        return self.get_response(resp)
+
+    def get_response(self, response):
+        if response is None:
+            return 0
+        return response.text if hasattr(response, "text") else response.content
+
+    def enumerate(self):
+        flag = True
+        page_no = 0
+        prev_links = []
+        retries = 0
+
+        while flag:
+            if self.check_max_pages(page_no):
+                return self.subdomains
+            resp = self.send_req(page_no)
+
+            if not self.check_response_errors(resp):
+                return self.subdomains
+            links = self.extract_domains(resp)
+
+            if links == prev_links:
+                retries += 1
+                page_no = self.get_page(page_no)
+
+                if retries >= 3:
+                    return self.subdomains
+
+            prev_links = links
+            self.should_sleep()
+
+        return self.subdomains
+
+class Bing(multiprocessing.Process):
+    def __init__(self, domain, q, verbose):
+        self.base_url = 'https://www.bing.com/search?q=domain%3A{domain}%20-www.{domain}&go=Submit&first={page_no}'
+        self.lock = threading.Lock()
+        self.q = q
+        self.MAX_PAGES = 30
+        self.subdomains = []
+        self.engine_name = 'Bing'
+        self.domain = domain
+        self.session = requests.Session()
+        self.headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
+        }
+        self.timeout = 30
+        self.verbose = verbose
+        multiprocessing.Process.__init__(self)
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def check_max_pages(self,num):
+        if self.MAX_PAGES == 0:
+            return False
+        return num >= self.MAX_PAGES
+
+    def check_response_errors(self,resp):
+        return True
+
+    def send_req(self, page_no=1):
+        url = self.base_url.format(domain=self.domain, page_no=page_no)
+        try:
+            resp = self.session.get(url, headers=self.headers, timeout=self.timeout)
+        except Exception:
+            resp = None
+        
+        return self.get_response(resp)
+
+    def get_response(self, response):
+        if response is None:
+            return 0
+        return response.text if hasattr(response, "text") else response.content
+
+    def should_sleep(self):
+        time.sleep(random.randint(2, 5))
+        return
+
+    def print_(self, text):
+        print(text)
+        return
+
+    def extract_domains(self, resp):
+        links_list = list()
+        link_regx = re.compile('<li class="b_algo"><div class="b_title"><h2><a target="_blank" href="(.*?)"')
+        link_regx2 = re.compile('<li class="b_algo"><h2><a target="_blank" href="(.*?)"')
+        try:
+            links1 = link_regx.findall(resp)
+            links2 = link_regx2.findall(resp)
+            links_list = links1 + links2
+            for link in links_list:
+                link = re.sub('<(\/)?strong>|<span.*?>|<|>', '', link)
+                if not (link.startswith('http') or link.startswith('https')):
+                    link = "http://" + link
+                subdomain = urlparse.urlparse(link).netloc
+                if subdomain not in self.subdomains and subdomain != self.domain:
+                    logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                    self.subdomains.append(subdomain.strip())
+        except Exception:
+            pass
+
+        return links_list
+
+    def get_page(self, num):
+        return num + 10
+
+    def enumerate(self):
+        flag = True
+        page_no = 1
+        prev_links = []
+        retries = 0
+
+        while flag:
+            if self.check_max_pages(page_no):
+                return self.subdomains
+            resp = self.send_req(page_no)
+
+            if not self.check_response_errors(resp):
+                return self.subdomains
+            links = self.extract_domains(resp)
+
+            if links == prev_links:
+                retries += 1
+                page_no = self.get_page(page_no)
+
+                if retries >= 3:
+                    return self.subdomains
+
+            prev_links = links
+            self.should_sleep()
+
+        return self.subdomains
+
+class Yahoo(multiprocessing.Process):
+    def __init__(self, domain, q, verbose):
+        self.base_url = "https://search.yahoo.com/search?p=site%3A{domain}%20-domain%3Awww.{domain}&b={page_no}"
+        self.engine_name = "Yahoo"
+        self.lock = threading.Lock()
+        self.q = q
+        self.MAX_DOMAINS = 10
+        self.MAX_PAGES = 0
+        self.subdomains = []
+        self.domain = domain
+        self.session = requests.Session()
+        self.headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
+        }
+        self.timeout = 30
+        self.verbose = verbose
+        multiprocessing.Process.__init__(self)
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def extract_domains(self, resp):
+        link_regx2 = re.compile('<span class=" fz-.*? fw-m fc-12th wr-bw.*?">(.*?)</span>')
+        link_regx = re.compile('<span class="txt"><span class=" cite fw-xl fz-15px">(.*?)</span>')
+        links_list = []
+        try:
+            links = link_regx.findall(resp)
+            links2 = link_regx2.findall(resp)
+            links_list = links + links2
+            for link in links_list:
+                link = re.sub("<(\/)?b>", "", link)
+                if not link.startswith('http'):
+                    link = "http://" + link
+                subdomain = urlparse.urlparse(link).netloc
+                if not subdomain.endswith(self.domain):
+                    continue
+                if subdomain and subdomain not in self.subdomains and subdomain != self.domain:
+                    logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                    self.subdomains.append(subdomain.strip())
+        except Exception:
+            pass
+
+        return links_list
+
+    def should_sleep(self):
+        return
+
+    def get_page(self, num):
+        return num + 10
+
+    def print_(self, text):
+        print(text)
+        return
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def check_max_pages(self,num):
+        if self.MAX_PAGES == 0:
+            return False
+        return num >= self.MAX_PAGES
+
+    def send_req(self, page_no=1):
+        url = self.base_url.format(domain=self.domain, page_no=page_no)
+        try:
+            #因为总所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            proxies = {
+                "http": "socks5h://127.0.0.1:1080",
+                "https": "socks5h://127.0.0.1:1080",
+                }
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
+        except Exception as e:
+            resp = None
+        
+        return self.get_response(resp)
+
+    def get_response(self, response):
+        if response is None:
+            return 0
+        return response.text if hasattr(response, "text") else response.content
+
+    def check_response_errors(self, resp):
+        """ chlid class should override this function
+        The function should return True if there are no errors and False otherwise
+        """
+        return True
+
+    def enumerate(self):
+        flag = True
+        page_no = 1
+        prev_links = []
+        retries = 0
+
+        while flag:
+            if self.check_max_pages(page_no):
+                return self.subdomains
+            resp = self.send_req(page_no)
+
+            if not self.check_response_errors(resp):
+                return self.subdomains
+            links = self.extract_domains(resp)
+
+            if links == prev_links:
+                retries += 1
+                page_no = self.get_page(page_no)
+
+                if retries >= 3:
+                    return self.subdomains
+
+            prev_links = links
+            self.should_sleep()
+
+        return self.subdomains
+
+class Baidu(multiprocessing.Process):
+    def __init__(self,domain,q,verbose):
+        self.base_url = "https://www.baidu.com/s?ie=UTF-8&wd=site%3A{domain}%20-site%3Awww.{domain}&pn={page_no}"
+        self.lock = threading.Lock()
+        self.q = q
+        self.MAX_PAGES = 30
+        self.subdomains = []
+        self.engine_name = 'Baidu'
+        self.domain = domain
+        self.session = requests.Session()
+        self.headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
+        }
+        self.timeout = 30
+        self.verbose = verbose
+        multiprocessing.Process.__init__(self)
+
+    def run(self):
+        domain_list = self.enumerate()
+        for domain in domain_list:
+            self.q.append(domain)
+
+    def check_max_pages(self,num):
+        if self.MAX_PAGES == 0:
+            return False
+        return num >= self.MAX_PAGES
+
+    def check_response_errors(self,resp):
+        return True
+
+    def send_req(self, page_no=1):
+        url = self.base_url.format(domain=self.domain, page_no=page_no)
+        try:
+            resp = self.session.get(url, headers=self.headers, timeout=self.timeout)
+        except Exception:
+            resp = None
+        
+        return self.get_response(resp)
+
+    def get_response(self, response):
+        if response is None:
+            return 0
+        return response.text if hasattr(response, "text") else response.content
+
+    def should_sleep(self):
+        time.sleep(random.randint(2, 5))
+        return
+
+    def print_(self, text):
+        print(text)
+        return
+
+    def extract_domains(self, resp):
+        links = list()
+        found_newdomain = False
+        subdomain_list = []
+        link_regx = re.compile('<a.*?class="c-showurl".*?>(.*?)</a>')
+        try:
+            links = link_regx.findall(resp)
+            for link in links:
+                link = re.sub('<.*?>|>|<|&nbsp;', '', link)
+                if not (link.startswith('http') or link.startswith('https')):
+                    link = "http://" + link
+                subdomain = urlparse.urlparse(link).netloc
+                if subdomain.endswith(self.domain):
+                    subdomain_list.append(subdomain)
+                    if subdomain not in self.subdomains and subdomain != self.domain:
+                        found_newdomain = True
+                        logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                        self.subdomains.append(subdomain.strip())
+        except Exception:
+            pass
+        if not found_newdomain and subdomain_list:
+            self.querydomain = self.findsubs(subdomain_list)
+        return links
+
+    def findsubs(self, subdomains):
+        count = Counter(subdomains)
+        subdomain1 = max(count, key=count.get)
+        count.pop(subdomain1, "None")
+        subdomain2 = max(count, key=count.get) if count else ''
+        return (subdomain1, subdomain2)
+
+    def get_page(self, num):
+        return num + 10
+
+    def enumerate(self):
+        flag = True
+        page_no = 0
+        prev_links = []
+        retries = 0
+
+        while flag:
+            if self.check_max_pages(page_no):
+                return self.subdomains
+            resp = self.send_req(page_no)
+
+            if not self.check_response_errors(resp):
+                return self.subdomains
+            links = self.extract_domains(resp)
+
+            if links == prev_links:
+                retries += 1
+                page_no = self.get_page(page_no)
+
+                if retries >= 3:
+                    return self.subdomains
+
+            prev_links = links
+            self.should_sleep()
+
+        return self.subdomains
+
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False):
+    def __init__(self, domain, engines, response_filter=None, dns_servers=None, skip_rsc=False, debug=False):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
+        self.engines = engines
         self.data = {}
         self.domain = domain
         self.skip_rsc = skip_rsc
@@ -636,6 +1102,20 @@ class EnumSubDomain(object):
             self.loop.run_until_complete(self.start(tasks))
         logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
+        # Use search engines to enumerate subdomains (support Baidu,Bing,Google,Yahoo)
+        logger.info('Enumerating subdomains with Baidu,Bing,Google and Yahoo')
+        subdomains_queue = multiprocessing.Manager().list()
+        enums = [enum(self.domain,q=subdomains_queue,verbose=False) for enum in self.engines]
+        for enum in enums:
+            enum.start()
+        for enum in enums:
+            enum.join()
+        subdomains = set(subdomains_queue)
+        if len(subdomains):
+            tasks = (self.query(sub[:sub.find('.')]) for sub in subdomains)
+            self.loop.run_until_complete(self.start(tasks))
+        logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
+
         # write output
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
@@ -675,6 +1155,7 @@ def main():
         domains = []
         param = sys.argv[1].strip()
         skip_rsc = False
+        engines = [Baidu,Google,Bing,Yahoo]
         response_filter = None
         if len(sys.argv) >= 3:
             if sys.argv[2].strip().startswith('--skip-rsc'):
@@ -709,7 +1190,7 @@ def main():
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug)
+            esd = EnumSubDomain(d, engines, response_filter, skip_rsc=skip_rsc, debug=debug)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
