@@ -3,7 +3,7 @@ from ESD import EnumSubDomain
 from difflib import SequenceMatcher
 
 
-'''def test_load_sub_domain_dict():
+def test_load_sub_domain_dict():
     esd = EnumSubDomain('feei.cn')
     assert 'www' in esd.load_sub_domain_dict()
 
@@ -91,9 +91,4 @@ def test_rsc():
 </script>
 </body></html>"""
     ratio = SequenceMatcher(None, a_html, b_html).real_quick_ratio()
-    assert ratio > 0.8'''
-def test():
-    subdomains = ['blog.python.org','blog-cn.python.org']
-    esd = EnumSubDomain('python.org')
-    for sub in subdomains:
-        esd.query(sub)
+    assert ratio > 0.8
