@@ -16,6 +16,7 @@ import re
 import sys
 import time
 import ssl
+import math
 import string
 import random
 import traceback
@@ -140,7 +141,7 @@ class CAInfo(object):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -148,6 +149,7 @@ class EnumSubDomain(object):
         self.data = {}
         self.domain = domain
         self.skip_rsc = skip_rsc
+        self.split = split
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -265,6 +267,15 @@ class EnumSubDomain(object):
         dicts = list(set(dicts))
         # root domain
         dicts.append('@')
+        # split dict
+        if self.split is not None:
+            s = self.split.split('/')
+            dicts_choose = int(s[0])
+            dicts_count = int(s[1])
+            dicts_every = int(math.ceil(len(dicts)/dicts_count))
+            dicts = [dicts[i:i+dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose-1]
+            logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
+
         return dicts
 
     async def query(self, sub):
@@ -670,28 +681,39 @@ class EnumSubDomain(object):
 def main():
     try:
         if len(sys.argv) < 2:
-            logger.info("Usage: python ESD.py feei.cn [response filter] [--skip-rsc]")
+            logger.info("Usage: python ESD.py feei.cn [response filter] [--skip-rsc] [--split=1/4]")
             exit(0)
         domains = []
         param = sys.argv[1].strip()
         skip_rsc = False
         response_filter = None
+        split = None
         if len(sys.argv) >= 3:
             if sys.argv[2].strip().startswith('--skip-rsc'):
                 skip_rsc = True
+            elif sys.argv[2].strip().startswith('--split'):
+                split = sys.argv[2].strip()
             else:
                 response_filter = sys.argv[2].strip()
             for i in range(3, len(sys.argv)):
                 if sys.argv[i].strip().startswith('--skip-rsc'):
                     skip_rsc = True
+                if sys.argv[i].strip().startswith('--split'):
+                    split = sys.argv[i].strip()
         else:
             response_filter = None
         if 'esd' in os.environ:
             debug = os.environ['esd']
         else:
             debug = False
+
+        if split is not None:
+            s = split.split('=')
+            split = s[1]
+
         logger.info('Debug: {d}'.format(d=debug))
         logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+        logger.info('--split: {s}'.format(s=split))
         if os.path.isfile(param):
             with open(param) as fh:
                 for line_domain in fh:
@@ -709,7 +731,7 @@ def main():
                 domains.append(param)
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug)
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
