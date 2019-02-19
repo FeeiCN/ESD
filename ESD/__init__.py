@@ -291,7 +291,7 @@ class EnumSubDomain(object):
         else:
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
-            ret = await seCollect DNSPod JSONP API's subdomainslf.resolver.query(sub_domain, 'A')
+            ret = await self.resolver.query(sub_domain, 'A')
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
             # It is a wildcard domain name and
