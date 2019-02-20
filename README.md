@@ -37,7 +37,7 @@
 - [X] 收集跳转过程中的子域名
 - [X] 收集HTTPS证书透明度子域名
 - [X] 收集DNS域传送子域名
-- [ ] 收集搜索引擎子域名
+- [x] 收集搜索引擎子域名
 
 #### DNS服务器
 - 解决各家DNS服务商对于网络线路出口判定不一致问题
@@ -56,25 +56,37 @@ pip install esd --upgrade
 **CLI命令行使用**
 ```bash
 # 扫描单个域名
-esd qq.com
+esd -d qq.com
 
 # debug模式扫描单个域名
-esd=debug esd qq.com
+esd=debug esd -d qq.com
 
 # 扫描多个域名（英文逗号分隔）
-esd qq.com,tencent.com
+esd --domain qq.com,tencent.com
 
 # 扫描单个域名且过滤子域名中单个特定响应内容
-esd mogujie.com 搜本店
+esd --domain mogujie.com --filter 搜本店
 
 # 扫描单个域名且过滤子域名中多个特定响应内容
-esd mogujie.com 搜本店,收藏店铺
+esd --domain mogujie.com --filter 搜本店,收藏店铺
 
 # 扫描文件（文件中每行一个域名）
-esd targets.txt
+esd --file targets.txt
 
 # 跳过相似度对比（开启这个选项会把所有泛解析的域名都过滤掉）
-esd qq.com --skip-rsc
+esd --domain qq.com --skip-rsc
+
+# 使用搜索引擎进行子域名搜索（支持baidu、google、bing、yahoo，使用英文逗号分隔）
+esd --domain qq.com --engine baidu,google,bing,yahoo
+
+# 平均分割字典，加快爆破
+esd --domain qq.com --split 1/4
+
+# 使用DNS域传送漏洞获取子域名
+esd --domain qq.com --dns-transfer
+
+# 使用HTTPS证书透明度获取子域名
+esd --domain qq.com --ca-info
 
 ```
 
