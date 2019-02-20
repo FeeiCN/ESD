@@ -36,6 +36,8 @@ import dns.zone
 import dns.resolver
 import multiprocessing
 import threading
+import tldextract
+from optparse import OptionParser
 import urllib.parse as urlparse
 import urllib.parse as urllib
 from collections import Counter
@@ -933,49 +935,70 @@ class EnumSubDomain(object):
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
 
+def banner():
+    print("""\033[94m
+                 ______    _____   _____  
+                |  ____|  / ____| |  __ \ 
+                | |__    | (___   | |  | |
+                |  __|    \___ \  | |  | |
+                | |____   ____) | | |__| |
+                |______| |_____/  |_____/\033[0m\033[93m
+                # Enumeration sub domains @version: %s
+    """ % __version__)
 
 def main():
+    banner()
+    parser = OptionParser('Usage: python ESD.py feei.cn [response filter] [--skip-rsc]')
+    parser.add_option('-d','--domain',dest='domains',help='The domains that you want to enumerate')
+    parser.add_option('-f','--file',dest='input',help='Import domains form this file')
+    parser.add_option('-F','--filter',dest='filter',help='Response filter')
+    parser.add_option('-s','--skip',dest='skiprsc',help='Skip response similary compare',default=False)
+    parser.add_option('-e','--engine',dest='engines',help='Choose to use which engine',default='baidu,google,bing,yahoo')
+    (options,args) = parser.parse_args()
+
+    domains = []
+    engines = []
+    support_engines = {
+        'baidu':Baidu,
+        'google':Google,
+        'bing':Bing,
+        'yahoo':Yahoo,
+    }
+    response_filter = options.filter
+    skip_rsc = options.skiprsc
+
+    for engine in options.engines.split(','):
+        engines.append(support_engines[engine])
+
+    if options.domains is not None:
+        for p in options.domains.split(','):
+            p = p.strip().lower()
+            re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', p)
+            if len(re_domain) > 0 and re_domain[0][0] == p and tldextract.extract(p).suffix != '':
+                domains.append(p.strip())
+            else:
+                logger.error('Unvalid domain: {d}'.format(d=p))
+    elif options.input and os.path.isfile(options.input):
+        with open(options.input) as fh:
+            for line_domain in fh:
+                line_domain = line_domain.strip().lower()
+                re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
+                if len(re_domain) > 0 and re_domain[0][0] == line_domain and tldextract.extract(line_domain).suffix != '':
+                    domains.append(line_domain)
+                else:
+                    logger.error('Domain validation failed: {d}'.format(d=line_domain))
+    else:
+        logger.error('Please input vaild parameter. ie: "esd -d feei.cn" or "esd -f /Users/root/domains.txt"')
+
+    if 'esd' in os.environ:
+        debug = os.environ['esd']
+    else:
+        debug = False
+    logger.info('Debug: {d}'.format(d=debug))
+    logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+
+    logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
-        if len(sys.argv) < 2:
-            logger.info("Usage: python ESD.py feei.cn [response filter] [--skip-rsc]")
-            exit(0)
-        domains = []
-        param = sys.argv[1].strip()
-        skip_rsc = False
-        engines = [Baidu,Google,Bing,Yahoo]
-        response_filter = None
-        if len(sys.argv) >= 3:
-            if sys.argv[2].strip().startswith('--skip-rsc'):
-                skip_rsc = True
-            else:
-                response_filter = sys.argv[2].strip()
-            for i in range(3, len(sys.argv)):
-                if sys.argv[i].strip().startswith('--skip-rsc'):
-                    skip_rsc = True
-        else:
-            response_filter = None
-        if 'esd' in os.environ:
-            debug = os.environ['esd']
-        else:
-            debug = False
-        logger.info('Debug: {d}'.format(d=debug))
-        logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
-        if os.path.isfile(param):
-            with open(param) as fh:
-                for line_domain in fh:
-                    line_domain = line_domain.strip().lower()
-                    re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
-                    if len(re_domain) > 0 and re_domain[0][0] == line_domain:
-                        domains.append(line_domain)
-                    else:
-                        logger.error('Domain validation failed: {d}'.format(d=line_domain))
-        else:
-            if ',' in param:
-                for p in param.split(','):
-                    domains.append(p.strip())
-            else:
-                domains.append(param)
-        logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
             esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, engines=engines)
             esd.run()
