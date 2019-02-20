@@ -1097,7 +1097,7 @@ def main():
             if len(re_domain) > 0 and re_domain[0][0] == p and tldextract.extract(p).suffix != '':
                 domains.append(p.strip())
             else:
-                logger.error('Unvalid domain: {d}'.format(d=p))
+                logger.error('Domain validation failed: {d}'.format(d=p))
     elif options.input and os.path.isfile(options.input):
         with open(options.input) as fh:
             for line_domain in fh:
