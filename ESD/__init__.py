@@ -1043,14 +1043,14 @@ def banner():
 
 def main():
     banner()
-    parser = OptionParser('Usage: python ESD.py feei.cn [response filter] [--skip-rsc]')
+    parser = OptionParser('Usage: python ESD.py -d feei.cn -F response_filter -e baidu,google,bing,yahoo -p user:pass@host:port')
     parser.add_option('-d','--domain',dest='domains',help='The domains that you want to enumerate')
     parser.add_option('-f','--file',dest='input',help='Import domains from this file')
     parser.add_option('-F','--filter',dest='filter',help='Response filter')
     parser.add_option('-s','--skip-rsc',dest='skiprsc',help='Skip response similary compare',default=False)
-    parser.add_option('-e','--engine',dest='engines',help='Choose an engine in baidu,google,bing or yahoo, split with ","')
+    parser.add_option('-e','--engines',dest='engines',help='Choose an engine in baidu,google,bing or yahoo, split with ","')
     parser.add_option('-S','--split',dest='split',help='Split the dict into several parts',default='1/1')
-    parser.add_option('-p','--proxy',dest='proxy',help='Use socks5 proxy to access Google and Yahoo',default='user:pass@host:port')
+    parser.add_option('-p','--proxy',dest='proxy',help='Use socks5 proxy to access Google and Yahoo')
     parser.add_option('-n','--no-brute',dest='nobrute',help='Do not use brute force',action='store_false',default=True)
     parser.add_option('-t','--dns-transfer',dest='transfer',help='Use DNS Transfer vulnerability to find subdomains',action='store_true',default=False)
     parser.add_option('-c','--ca-info',dest='cainfo',help='Use CA info to find subdomains',action='store_true',default=False)
