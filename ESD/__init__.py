@@ -482,6 +482,15 @@ class EnumSubDomain(object):
         self.domains_rs = []
         self.domains_rs_processed = []
 
+    def raise_domain_error(self, sub_domain, e):
+        err_code, err_msg = e.args[0], e.args[1]
+        # 1:  DNS server returned answer with no data
+        # 4:  Domain name not found
+        # 11: Could not contact DNS servers
+        # 12: Timeout while contacting DNS servers
+        if err_code not in [1, 4, 11, 12]:
+            logger.info('{domain} {exception}'.format(domain=sub_domain,exception=e))
+
     def generate_general_dicts(self, line):
         """
         Generate general subdomains dicts
@@ -564,6 +573,9 @@ class EnumSubDomain(object):
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
             ret = await self.resolver.query(sub_domain, 'A')
+        except aiodns.error.DNSError as e:
+            self.raise_domain_error(sub_domain,e)
+        else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
             # It is a wildcard domain name and
@@ -582,22 +594,32 @@ class EnumSubDomain(object):
                             r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
                 if sub != self.wildcard_sub:
-                    self.data[sub_domain] = sorted(domain_ips)
-                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
-        except aiodns.error.DNSError as e:
-            err_code, err_msg = e.args[0], e.args[1]
-            # 1:  DNS server returned answer with no data
-            # 4:  Domain name not found
-            # 11: Could not contact DNS servers
-            # 12: Timeout while contacting DNS servers
-            if err_code not in [1, 4, 11, 12]:
-                logger.info(
-                    '{domain} {exception}'.format(
-                        domain=sub_domain,
-                        exception=e))
-        except Exception as e:
-            logger.info(sub_domain)
-            logger.warning(traceback.format_exc())
+                    try:
+                        soa = None
+                        q_soa = await self.resolver.query(sub_domain,'SOA')
+                        soa = [q_soa.nsname, q_soa.hostmaster]
+                    except aiodns.error.DNSError as e:
+                        self.raise_domain_error(sub_domain,e)
+                    try:
+                        aaaa = None
+                        q_aaaa = await self.resolver.query(sub_domain,'AAAA')
+                        aaaa = [a.host for a in q_aaaa]
+                    except aiodns.error.DNSError as e:
+                        self.raise_domain_error(sub_domain,e)
+                    try:
+                        txt = None
+                        q_txt = await self.resolver.query(sub_domain,'TXT')
+                        txt = [t.text for t in q_txt]
+                    except aiodns.error.DNSError as e:
+                        self.raise_domain_error(sub_domain,e)
+                    try:
+                        mx = None
+                        q_mx = await self.resolver.query(sub_domain,'MX')
+                        mx = [m.host for m in q_mx]
+                    except aiodns.error.DNSError as e:
+                        self.raise_domain_error(sub_domain,e)
+                    self.data[sub_domain] = {'A':sorted(domain_ips),'AAAA':aaaa,'SOA':soa,'TXT':txt,'MX':mx}
+                    logger.info('{r} {sub} A:{ips},SOA:{soa},AAAA:{aaaa},TXT:{txt},MX:{mx}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips, soa=soa, aaaa=aaaa, txt=txt, mx=mx))
         self.remainder += -1
         return sub, ret
 
@@ -744,8 +766,7 @@ class EnumSubDomain(object):
                     set(response_domains) - set([sub_domain]))
                 for rd in response_domains:
                     rd = rd.strip().strip('.')
-                    if rd.count('.') >= sub_domain.count(
-                            '.') and rd[-len(sub_domain):] == sub_domain:
+                    if rd.count('.') >= sub_domain.count('.') and rd[-len(sub_domain):] == sub_domain:
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
@@ -930,7 +951,7 @@ class EnumSubDomain(object):
             # Response similarity comparison
             dns_subs = []
             for domain, ips in self.data.items():
-                logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
+                logger.info('{domain} {ips}'.format(domain=domain, ips=ips['A']))
                 dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
             self.wildcard_subs = list(set(subs) - set(dns_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(
@@ -1005,24 +1026,57 @@ class EnumSubDomain(object):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain,time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
-        if len(self.data):
-            max_domain_len = max(map(len, self.data)) + 2
-        else:
-            max_domain_len = 2
-        output_format = '%-{0}s%-s\n'.format(max_domain_len)
-        with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
-            for domain, ips in self.data.items():
+        with open(output_path_with_time, 'w') as opt, open(output_path,
+                                                           'w') as op:
+            if len(self.data):
+                max_domain_list = []
+                max_a_list = []
+                max_aaaa_list = []
+                max_soa_list = []
+                max_txt_list = []
+                for domain, ips in self.data.items():
+                    # The format is consistent with other scanners to ensure that they are
+                    # invoked at the same time without increasing the cost of
+                    # resolution
+                    if ips['A'] is None or len(ips['A']) == 0:
+                        a_split = ''
+                    else:
+                        a_split = ','.join(ips['A'])
+                    if ips['AAAA'] is None or len(ips['AAAA']) == 0:
+                        aaaa_split = ''
+                    else:
+                        aaaa_split = ','.join(ips['AAAA'])
+                    if ips['SOA'] is None or len(ips['SOA']) == 0:
+                        soa_split = ''
+                    else:
+                        soa_split = ','.join(ips['SOA'])
+                    if ips['TXT'] is None or len(ips['TXT']) == 0:
+                        txt_split = ''
+                    else:
+                        txt_split = ','.join(ips['TXT'])
+                    if ips['MX'] is None or len(ips['MX']) == 0:
+                        mx_split = ''
+                    else:
+                        mx_split = ','.join(ips['MX'])
 
-                # The format is consistent with other scanners to ensure that they are
-                # invoked at the same time without increasing the cost of
-                # resolution
-                if ips is None or len(ips) == 0:
-                    ips_split = ''
-                else:
-                    ips_split = ','.join(ips)
-                con = output_format % (domain, ips_split)
-                op.write(con)
-                opt.write(con)
+                    max_domain_list.append(len(domain))
+                    max_domain_len = max(max_domain_list) + 2
+                    max_a_list.append(len(a_split))
+                    max_a_len = max(max_a_list) + 2
+                    max_aaaa_list.append(len(aaaa_split))
+                    max_aaaa_len = max(max_aaaa_list) + 2
+                    max_soa_list.append(len(soa_split))
+                    max_soa_len = max(max_soa_list) + 2
+                    max_txt_list.append(len(txt_split))
+                    max_txt_len = max(max_txt_list) + 2
+
+                    output_format = '%-{0}sA:%-{1}sAAAA:%-{2}sSOA:%-{3}sTXT:%-{4}sMX:%-s\n'.format(max_domain_len,
+                        max_a_len, max_aaaa_len, max_soa_len, max_txt_len)
+                    con = output_format % (domain, a_split, aaaa_split, soa_split,
+                                        txt_split, mx_split)
+                    op.write(con)
+                    opt.write(con)
+
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
