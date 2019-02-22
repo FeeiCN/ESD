@@ -489,7 +489,7 @@ class EnumSubDomain(object):
         # 11: Could not contact DNS servers
         # 12: Timeout while contacting DNS servers
         if err_code not in [1, 4, 11, 12]:
-            logger.info('{domain} {exception}'.format(domain=sub_domain,exception=e))
+            logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
 
     def generate_general_dicts(self, line):
         """
@@ -574,7 +574,7 @@ class EnumSubDomain(object):
         try:
             ret = await self.resolver.query(sub_domain, 'A')
         except aiodns.error.DNSError as e:
-            self.raise_domain_error(sub_domain,e)
+            self.raise_domain_error(sub_domain, e)
         else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
@@ -596,29 +596,29 @@ class EnumSubDomain(object):
                 if sub != self.wildcard_sub:
                     try:
                         soa = None
-                        q_soa = await self.resolver.query(sub_domain,'SOA')
+                        q_soa = await self.resolver.query(sub_domain, 'SOA')
                         soa = [q_soa.nsname, q_soa.hostmaster]
                     except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain,e)
+                        self.raise_domain_error(sub_domain, e)
                     try:
                         aaaa = None
-                        q_aaaa = await self.resolver.query(sub_domain,'AAAA')
+                        q_aaaa = await self.resolver.query(sub_domain, 'AAAA')
                         aaaa = [a.host for a in q_aaaa]
                     except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain,e)
+                        self.raise_domain_error(sub_domain, e)
                     try:
                         txt = None
-                        q_txt = await self.resolver.query(sub_domain,'TXT')
-                        txt = [t.text for t in q_txt]
+                        q_txt = await self.resolver.query(sub_domain, 'TXT')
+                        txt = [t.text.decode('utf-8') for t in q_txt]
                     except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain,e)
+                        self.raise_domain_error(sub_domain, e)
                     try:
                         mx = None
-                        q_mx = await self.resolver.query(sub_domain,'MX')
+                        q_mx = await self.resolver.query(sub_domain, 'MX')
                         mx = [m.host for m in q_mx]
                     except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain,e)
-                    self.data[sub_domain] = {'A':sorted(domain_ips),'AAAA':aaaa,'SOA':soa,'TXT':txt,'MX':mx}
+                        self.raise_domain_error(sub_domain, e)
+                    self.data[sub_domain] = {'A': sorted(domain_ips), 'AAAA': aaaa, 'SOA': soa, 'TXT': txt, 'MX': mx}
                     logger.info('{r} {sub} A:{ips},SOA:{soa},AAAA:{aaaa},TXT:{txt},MX:{mx}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips, soa=soa, aaaa=aaaa, txt=txt, mx=mx))
         self.remainder += -1
         return sub, ret
@@ -918,9 +918,8 @@ class EnumSubDomain(object):
                         headers=self.request_headers, timeout=10, verify=False).text
                     self.wildcard_html = self.data_clean(self.wildcard_html)
                     self.wildcard_html_len = len(self.wildcard_html)
-                    self.wildcard_html3 = requests.get(
-                        'http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain),
-                        headers=self.request_headers, timeout=10, verify=False).text
+                    self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain),
+                                                       headers=self.request_headers, timeout=10, verify=False).text
                     self.wildcard_html3 = self.data_clean(self.wildcard_html3)
                     self.wildcard_html3_len = len(self.wildcard_html3)
                     logger.info(
@@ -1024,7 +1023,7 @@ class EnumSubDomain(object):
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
             os.mkdir(tmp_dir, 0o777)
-        output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain,time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
+        output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
         with open(output_path_with_time, 'w') as opt, open(output_path,
                                                            'w') as op:
@@ -1071,9 +1070,9 @@ class EnumSubDomain(object):
                     max_txt_len = max(max_txt_list) + 2
 
                     output_format = '%-{0}sA:%-{1}sAAAA:%-{2}sSOA:%-{3}sTXT:%-{4}sMX:%-s\n'.format(max_domain_len,
-                        max_a_len, max_aaaa_len, max_soa_len, max_txt_len)
+                                                                                                   max_a_len, max_aaaa_len, max_soa_len, max_txt_len)
                     con = output_format % (domain, a_split, aaaa_split, soa_split,
-                                        txt_split, mx_split)
+                                           txt_split, mx_split)
                     op.write(con)
                     opt.write(con)
 
@@ -1083,6 +1082,7 @@ class EnumSubDomain(object):
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
+
 
 def banner():
     print("""\033[94m
@@ -1095,20 +1095,21 @@ def banner():
             # Enumeration sub domains @version: %s\033[92m
     """ % __version__)
 
+
 def main():
     banner()
     parser = OptionParser('Usage: python ESD.py -d feei.cn -F response_filter -e baidu,google,bing,yahoo -p user:pass@host:port')
-    parser.add_option('-d','--domain',dest='domains',help='The domains that you want to enumerate')
-    parser.add_option('-f','--file',dest='input',help='Import domains from this file')
-    parser.add_option('-F','--filter',dest='filter',help='Response filter')
-    parser.add_option('-s','--skip-rsc',dest='skiprsc',help='Skip response similary compare',default=False)
-    parser.add_option('-e','--engines',dest='engines',help='Choose an engine in baidu,google,bing or yahoo, split with ","')
-    parser.add_option('-S','--split',dest='split',help='Split the dict into several parts',default='1/1')
-    parser.add_option('-p','--proxy',dest='proxy',help='Use socks5 proxy to access Google and Yahoo')
-    parser.add_option('-n','--no-brute',dest='nobrute',help='Do not use brute force',action='store_false',default=True)
-    parser.add_option('-t','--dns-transfer',dest='transfer',help='Use DNS Transfer vulnerability to find subdomains',action='store_true',default=False)
-    parser.add_option('-c','--ca-info',dest='cainfo',help='Use CA info to find subdomains',action='store_true',default=False)
-    (options,args) = parser.parse_args()
+    parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
+    parser.add_option('-f', '--file', dest='input', help='Import domains from this file')
+    parser.add_option('-F', '--filter', dest='filter', help='Response filter')
+    parser.add_option('-s', '--skip-rsc', dest='skiprsc', help='Skip response similary compare', default=False)
+    parser.add_option('-e', '--engines', dest='engines', help='Choose an engine in baidu,google,bing or yahoo, split with ","')
+    parser.add_option('-S', '--split', dest='split', help='Split the dict into several parts', default='1/1')
+    parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
+    parser.add_option('-n', '--no-brute', dest='nobrute', help='Do not use brute force', action='store_false', default=True)
+    parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
+    parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
+    (options, args) = parser.parse_args()
 
     support_engines = {
         'baidu': Baidu,
