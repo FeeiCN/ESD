@@ -373,8 +373,7 @@ class Baidu(EngineBase):
                     subdomain_list.append(subdomain)
                     if subdomain not in self.subdomains and subdomain != self.domain:
                         found_newdomain = True
-                        logger.info(
-                            '{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                        logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
                         self.subdomains.append(subdomain.strip())
         except Exception:
             pass
@@ -705,9 +704,7 @@ class EnumSubDomain(object):
                             location = location
                         status = history[-1].status
                         if location in skip_domain_with_history:
-                            logger.debug(
-                                'domain in skip: {s} {r} {l}'.format(
-                                    s=sub_domain, r=status, l=location))
+                            logger.debug('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
                             return
                         else:
                             # cnsuning.com suning.com
