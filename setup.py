@@ -31,12 +31,27 @@ setuptools.setup(
     url='https://github.com/FeeiCN/ESD',
     packages=setuptools.find_packages(),
     install_requires=[
-        'aiodns', 'aiohttp', 'async-timeout', 'colorlog', 'requests', 'uvloop',
-        'backoff', 'dnspython', 'pysocks', 'tldextract'
+        'aiodns',
+        'aiohttp',
+        'async-timeout',
+        'colorlog',
+        'requests',
+        'uvloop',
+        'backoff',
+        'dnspython'
     ],
     classifiers=(
-        "Topic :: Security", "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"),
+        "Topic :: Security",
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
+    ),
     include_package_data=True,
-    package_data={'': ['*.esd']},
-    entry_points={'console_scripts': ['esd=ESD:main']})
+    package_data={
+        '': ['*.esd']
+    },
+    entry_points={
+        'console_scripts': [
+            'esd=ESD:main'
+        ]
+    }
+)

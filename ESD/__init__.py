@@ -37,8 +37,6 @@ import dns.zone
 import dns.resolver
 import multiprocessing
 import threading
-import tldextract
-from optparse import OptionParser
 import urllib.parse as urlparse
 import urllib.parse as urllib
 from collections import Counter
@@ -46,7 +44,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.22'
+__version__ = '0.0.21'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -71,8 +69,13 @@ logger = colorlog.getLogger('ESD')
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-ssl.match_hostname = lambda cert, hostname: True
+#shadowsocks代理
+proxies = {
+    "http": "socks5h://127.0.0.1:1080",
+    "https": "socks5h://127.0.0.1:1080",
+    }
 
+ssl.match_hostname = lambda cert, hostname: True
 
 class DNSTransfer(object):
     def __init__(self, domain):
@@ -96,7 +99,7 @@ class DNSTransfer(object):
                 if subdomain != self.domain:
                     ret_zones.append(subdomain)
             return ret_zones
-        except BaseException:
+        except:
             return []
 
 
@@ -147,9 +150,8 @@ class CAInfo(object):
             subs.append(sub[:len(sub) - len(self.domain) - 1])
         return subs
 
-
 class EngineBase(multiprocessing.Process):
-    def __init__(self, base_url, domain, q, verbose, proxy):
+    def __init__(self,base_url,domain,q,verbose):
         multiprocessing.Process.__init__(self)
         self.lock = threading.Lock()
         self.q = q
@@ -158,19 +160,19 @@ class EngineBase(multiprocessing.Process):
         self.domain = domain
         self.session = requests.Session()
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.8',
-            'Accept-Encoding': 'gzip',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
         }
         self.timeout = 30
         self.verbose = verbose
-        self.proxy = proxy
+        
 
     def get_page(self, num):
         return num + 10
 
-    # 应当在子类里重写
+    #应当在子类里重写
     def check_response_errors(self, resp):
         return True
 
@@ -183,7 +185,7 @@ class EngineBase(multiprocessing.Process):
             return 0
         return response.text if hasattr(response, "text") else response.content
 
-    def check_max_pages(self, num):
+    def check_max_pages(self,num):
         if self.MAX_PAGES == 0:
             return False
         return num >= self.MAX_PAGES
@@ -191,11 +193,10 @@ class EngineBase(multiprocessing.Process):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(
-                url, headers=self.headers, timeout=self.timeout)
+            resp = self.session.get(url, headers=self.headers, timeout=self.timeout)
         except Exception:
             resp = None
-
+        
         return self.get_response(resp)
 
     def enumerate(self):
@@ -232,16 +233,16 @@ class EngineBase(multiprocessing.Process):
 
 
 class Google(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = "https://www.google.com/search?q=site:{domain}+-www.{domain}&start={page_no}"
-        super(Google, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Google,self).__init__(base_url,domain,q,verbose)
         self.MAX_DOMAINS = 11
         self.MAX_PAGES = 200
         self.engine_name = 'Google'
 
     def extract_domains(self, resp):
         links_list = list()
-        link_regx = re.compile(r'<cite.*?>(.*?)<\/cite>')
+        link_regx = re.compile('<cite.*?>(.*?)<\/cite>')
         try:
             links_list = link_regx.findall(resp)
             for link in links_list:
@@ -257,7 +258,7 @@ class Google(EngineBase):
         return links_list
 
     def check_response_errors(self, resp):
-        if isinstance(resp, int):
+        if isinstance(resp,int):
             logger.warning("Please use proxy to access Google!")
             logger.warning("Finished now the Google Enumeration ...")
             return False
@@ -266,17 +267,18 @@ class Google(EngineBase):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(url, proxies=self.proxy, headers=self.headers, timeout=self.timeout)
+            #因为众所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
         except Exception as e:
             resp = None
-
+        
         return self.get_response(resp)
 
 
 class Bing(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = 'https://www.bing.com/search?q=domain%3A{domain}%20-www.{domain}&go=Submit&first={page_no}'
-        super(Bing, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Bing,self).__init__(base_url,domain,q,verbose)
         self.MAX_PAGES = 30
         self.engine_name = 'Bing'
 
@@ -289,7 +291,7 @@ class Bing(EngineBase):
             links2 = link_regx2.findall(resp)
             links_list = links1 + links2
             for link in links_list:
-                link = re.sub(r'<(\/)?strong>|<span.*?>|<|>', '', link)
+                link = re.sub('<(\/)?strong>|<span.*?>|<|>', '', link)
                 if not (link.startswith('http') or link.startswith('https')):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
@@ -303,9 +305,9 @@ class Bing(EngineBase):
 
 
 class Yahoo(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = "https://search.yahoo.com/search?p=site%3A{domain}%20-domain%3Awww.{domain}&b={page_no}"
-        super(Yahoo, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Yahoo,self).__init__(base_url,domain,q,verbose)
         self.engine_name = "Yahoo"
         self.MAX_DOMAINS = 10
         self.MAX_PAGES = 0
@@ -319,7 +321,7 @@ class Yahoo(EngineBase):
             links2 = link_regx2.findall(resp)
             links_list = links + links2
             for link in links_list:
-                link = re.sub(r"<(\/)?b>", "", link)
+                link = re.sub("<(\/)?b>", "", link)
                 if not link.startswith('http'):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
@@ -334,7 +336,7 @@ class Yahoo(EngineBase):
         return links_list
 
     def check_response_errors(self, resp):
-        if isinstance(resp, int):
+        if isinstance(resp,int):
             logger.warning("Please use proxy to access Yahoo!")
             logger.warning("Finished now the Yahoo Enumeration ...")
             return False
@@ -343,17 +345,18 @@ class Yahoo(EngineBase):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(url, proxies=self.proxy, headers=self.headers, timeout=self.timeout)
+            #因为众所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
         except Exception as e:
             resp = None
-
+        
         return self.get_response(resp)
 
 
 class Baidu(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self,domain,q,verbose):
         base_url = "https://www.baidu.com/s?ie=UTF-8&wd=site%3A{domain}%20-site%3Awww.{domain}&pn={page_no}"
-        super(Baidu, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Baidu,self).__init__(base_url,domain,q,verbose)
         self.MAX_PAGES = 30
         self.engine_name = 'Baidu'
 
@@ -390,20 +393,16 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[], proxy={}, brute=True, transfer=False, cainfo=False):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[]):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.engines = engines
-        self.proxy = proxy
         self.data = {}
         self.domain = domain
         self.skip_rsc = skip_rsc
         self.split = split
-        self.brute = brute
-        self.transfer = transfer
-        self.cainfo = cainfo
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -457,7 +456,8 @@ class EnumSubDomain(object):
             'DNT': '1',
             'Referer': 'http://www.baidu.com/',
             'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'}
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        }
         # Filter the domain's response(regex)
         self.response_filter = response_filter
         # debug mode
@@ -467,15 +467,6 @@ class EnumSubDomain(object):
         # collect redirecting domains and response domains
         self.domains_rs = []
         self.domains_rs_processed = []
-
-    def raise_domain_error(self, sub_domain, e):
-        err_code, err_msg = e.args[0], e.args[1]
-        # 1:  DNS server returned answer with no data
-        # 4:  Domain name not found
-        # 11: Could not contact DNS servers
-        # 12: Timeout while contacting DNS servers
-        if err_code not in [1, 4, 11, 12]:
-            logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
 
     def generate_general_dicts(self, line):
         """
@@ -534,8 +525,8 @@ class EnumSubDomain(object):
             s = self.split.split('/')
             dicts_choose = int(s[0])
             dicts_count = int(s[1])
-            dicts_every = int(math.ceil(len(dicts) / dicts_count))
-            dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
+            dicts_every = int(math.ceil(len(dicts)/dicts_count))
+            dicts = [dicts[i:i+dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose-1]
             logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
 
         return dicts
@@ -554,9 +545,6 @@ class EnumSubDomain(object):
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
         try:
             ret = await self.resolver.query(sub_domain, 'A')
-        except aiodns.error.DNSError as e:
-            self.raise_domain_error(sub_domain, e)
-        else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
             # It is a wildcard domain name and
@@ -570,32 +558,19 @@ class EnumSubDomain(object):
                     logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
                 if sub != self.wildcard_sub:
-                    try:
-                        soa = []
-                        q_soa = await self.resolver.query(sub_domain, 'SOA')
-                        soa = [q_soa.nsname, q_soa.hostmaster]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        aaaa = []
-                        q_aaaa = await self.resolver.query(sub_domain, 'AAAA')
-                        aaaa = [a.host for a in q_aaaa]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        txt = []
-                        q_txt = await self.resolver.query(sub_domain, 'TXT')
-                        txt = [t.text.decode('utf-8') for t in q_txt]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        mx = []
-                        q_mx = await self.resolver.query(sub_domain, 'MX')
-                        mx = [m.host for m in q_mx]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    self.data[sub_domain] = {'A': sorted(domain_ips), 'AAAA': aaaa, 'SOA': soa, 'TXT': txt, 'MX': mx}
-                    logger.info('{r} {sub} A:{ips},SOA:{soa},AAAA:{aaaa},TXT:{txt},MX:{mx}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips, soa=soa, aaaa=aaaa, txt=txt, mx=mx))
+                    self.data[sub_domain] = sorted(domain_ips)
+                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+        except aiodns.error.DNSError as e:
+            err_code, err_msg = e.args[0], e.args[1]
+            # 1:  DNS server returned answer with no data
+            # 4:  Domain name not found
+            # 11: Could not contact DNS servers
+            # 12: Timeout while contacting DNS servers
+            if err_code not in [1, 4, 11, 12]:
+                logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
+        except Exception as e:
+            logger.info(sub_domain)
+            logger.warning(traceback.format_exc())
         self.remainder += -1
         return sub, ret
 
@@ -614,7 +589,8 @@ class EnumSubDomain(object):
                         futures.remove(f)
                         try:
                             nf = next(coros)
-                            futures.append(asyncio.ensure_future(nf))
+                            futures.append(
+                                asyncio.ensure_future(nf))
                         except StopIteration:
                             pass
                         return f.result()
@@ -637,7 +613,7 @@ class EnumSubDomain(object):
             html = re.sub(r'\s', '', data)
             html = re.sub(r'<script(?!.*?src=).*?>.*?</script>', '', html)
             return html
-        except BaseException:
+        except:
             return data
 
     @staticmethod
@@ -655,8 +631,7 @@ class EnumSubDomain(object):
                     return await response.text(), response.history
         except Exception as e:
             # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
-            logger.warning(
-                'fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
+            logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
             return None, None
 
     async def similarity(self, sub):
@@ -682,8 +657,7 @@ class EnumSubDomain(object):
             '{domain}'.format(domain=sub_domain),
         ]
         try:
-            regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(
-                d=self.domain)
+            regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(d=self.domain)
             resolver = AsyncResolver(nameservers=self.dns_servers)
             conn = aiohttp.TCPConnector(resolver=resolver)
             async with aiohttp.ClientSession(connector=conn, headers=self.request_headers) as session:
@@ -698,8 +672,7 @@ class EnumSubDomain(object):
                         else:
                             location = location
                         try:
-                            location = re.match(
-                                regex_domain, location).group(0)
+                            location = re.match(regex_domain, location).group(0)
                         except AttributeError:
                             location = location
                         status = history[-1].status
@@ -765,8 +738,7 @@ class EnumSubDomain(object):
                         self.data[sub_domain] = self.wildcard_ips
                     else:
                         self.data[sub_domain] = self.wildcard_ips
-                    logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -805,7 +777,7 @@ class EnumSubDomain(object):
         :return:
         """
         start_time = time.time()
-        subs = self.load_sub_domain_dict() if self.brute else []
+        subs = self.load_sub_domain_dict()
         self.remainder = len(subs)
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
         logger.info('Generate coroutines...')
@@ -885,7 +857,7 @@ class EnumSubDomain(object):
             # Response similarity comparison
             dns_subs = []
             for domain, ips in self.data.items():
-                logger.info('{domain} {ips}'.format(domain=domain, ips=ips['A']))
+                logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
                 dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
             self.wildcard_subs = list(set(subs) - set(dns_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
@@ -913,37 +885,34 @@ class EnumSubDomain(object):
         logger.info('DNSPod JSONP API Count: {c}'.format(c=len(domains)))
 
         # CA subdomain info
-        if self.cainfo:
-            logger.info('Collect subdomains in CA...')
-            ca_subdomains = CAInfo(self.domain).get_subdomains()
-            tasks = (self.query(sub) for sub in ca_subdomains)
-            self.loop.run_until_complete(self.start(tasks))
-            logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
+        logger.info('Collect subdomains in CA...')
+        ca_subdomains = CAInfo(self.domain).get_subdomains()
+        tasks = (self.query(sub) for sub in ca_subdomains)
+        self.loop.run_until_complete(self.start(tasks))
+        logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
-        if self.transfer:
-            logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
-            transfer_info = DNSTransfer(self.domain).transfer_info()
-            if len(transfer_info):
-                logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
-                tasks = (self.query(sub) for sub in transfer_info)
-                self.loop.run_until_complete(self.start(tasks))
-            logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
+        logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
+        transfer_info = DNSTransfer(self.domain).transfer_info()
+        if len(transfer_info):
+            logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
+            tasks = (self.query(sub) for sub in transfer_info)
+            self.loop.run_until_complete(self.start(tasks))
+        logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
         # Use search engines to enumerate subdomains (support Baidu,Bing,Google,Yahoo)
-        if self.engines:
-            logger.info('Enumerating subdomains with search engine')
-            subdomains_queue = multiprocessing.Manager().list()
-            enums = [enum(self.domain, q=subdomains_queue, verbose=False, proxy=self.proxy) for enum in self.engines]
-            for enum in enums:
-                enum.start()
-            for enum in enums:
-                enum.join()
-            subdomains = set(subdomains_queue)
-            if len(subdomains):
-                tasks = (self.query(sub[:sub.find('.')]) for sub in subdomains)
-                self.loop.run_until_complete(self.start(tasks))
-            logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
+        logger.info('Enumerating subdomains with Baidu,Bing,Google and Yahoo')
+        subdomains_queue = multiprocessing.Manager().list()
+        enums = [enum(self.domain,q=subdomains_queue,verbose=False) for enum in self.engines]
+        for enum in enums:
+            enum.start()
+        for enum in enums:
+            enum.join()
+        subdomains = set(subdomains_queue)
+        if len(subdomains):
+            tasks = (self.query(sub[:sub.find('.')]) for sub in subdomains)
+            self.loop.run_until_complete(self.start(tasks))
+        logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
         # write output
         tmp_dir = '/tmp/esd'
@@ -951,44 +920,23 @@ class EnumSubDomain(object):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
+        if len(self.data):
+            max_domain_len = max(map(len, self.data)) + 2
+        else:
+            max_domain_len = 2
+        output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
-            if len(self.data):
-                max_domain_len = len(sorted(self.data.keys(), key=lambda x: len(x), reverse=True)[0]) + 2
-                max_a_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['A'])), reverse=True)[0]['A'])) + 2
-                max_aaaa_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['AAAA'])), reverse=True)[0]['AAAA'])) + 2
-                max_soa_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['SOA'])), reverse=True)[0]['SOA'])) + 2
-                max_txt_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['TXT'])), reverse=True)[0]['TXT'])) + 2
+            for domain, ips in self.data.items():
 
-                for domain, ips in self.data.items():
-                    # The format is consistent with other scanners to ensure that they are
-                    # invoked at the same time without increasing the cost of
-                    # resolution
-                    if ips['A'] is None or len(ips['A']) == 0:
-                        a_split = ''
-                    else:
-                        a_split = ', '.join(ips['A'])
-                    if ips['AAAA'] is None or len(ips['AAAA']) == 0:
-                        aaaa_split = ''
-                    else:
-                        aaaa_split = ', '.join(ips['AAAA'])
-                    if ips['SOA'] is None or len(ips['SOA']) == 0:
-                        soa_split = ''
-                    else:
-                        soa_split = ', '.join(ips['SOA'])
-                    if ips['TXT'] is None or len(ips['TXT']) == 0:
-                        txt_split = ''
-                    else:
-                        txt_split = ', '.join(ips['TXT'])
-                    if ips['MX'] is None or len(ips['MX']) == 0:
-                        mx_split = ''
-                    else:
-                        mx_split = ', '.join(ips['MX'])
-
-                    output_format = '%-{0}sA:%-{1}sAAAA:%-{2}sSOA:%-{3}sTXT:%-{4}sMX:%-s\n'.format(max_domain_len, max_a_len, max_aaaa_len, max_soa_len, max_txt_len)
-                    con = output_format % (domain, a_split, aaaa_split, soa_split, txt_split, mx_split)
-                    op.write(con)
-                    opt.write(con)
-
+                # The format is consistent with other scanners to ensure that they are
+                # invoked at the same time without increasing the cost of resolution
+                if ips is None or len(ips) == 0:
+                    ips_split = ''
+                else:
+                    ips_split = ','.join(ips)
+                con = output_format % (domain, ips_split)
+                op.write(con)
+                opt.write(con)
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
@@ -997,104 +945,65 @@ class EnumSubDomain(object):
         return self.data
 
 
-def banner():
-    print("""\033[94m
-                 ______    _____   _____  
-                |  ____|  / ____| |  __ \ 
-                | |__    | (___   | |  | |
-                |  __|    \___ \  | |  | |
-                | |____   ____) | | |__| |
-                |______| |_____/  |_____/\033[0m\033[93m
-            # Enumeration sub domains @version: %s\033[92m
-    """ % __version__)
-
-
 def main():
-    banner()
-    parser = OptionParser('Usage: python ESD.py -d feei.cn -F response_filter -e baidu,google,bing,yahoo -p user:pass@host:port')
-    parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
-    parser.add_option('-f', '--file', dest='input', help='Import domains from this file')
-    parser.add_option('-F', '--filter', dest='filter', help='Response filter')
-    parser.add_option('-s', '--skip-rsc', dest='skiprsc', help='Skip response similary compare', default=False)
-    parser.add_option('-e', '--engines', dest='engines', help='Choose an engine in baidu,google,bing or yahoo, split with ","')
-    parser.add_option('-S', '--split', dest='split', help='Split the dict into several parts', default='1/1')
-    parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
-    parser.add_option('-n', '--no-brute', dest='nobrute', help='Do not use brute force', action='store_false', default=True)
-    parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
-    parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
-    (options, args) = parser.parse_args()
-
-    support_engines = {
-        'baidu': Baidu,
-        'google': Google,
-        'bing': Bing,
-        'yahoo': Yahoo,
-    }
-
-    domains = []
-    engines = []
-    response_filter = options.filter
-    skip_rsc = options.skiprsc
-    split_list = options.split.split('/')
-    brute = options.nobrute
-    dns_transfer = options.transfer
-    ca_info = options.cainfo
-
-    if len(split_list) != 2 or int(split_list[0]) > int(split_list[1]):
-        logger.error('Invaild split parameter,can not split the dict')
-        split = None
-    else:
-        split = options.split
-
-    if options.proxy:
-        proxy = {
-            'http': 'socks5h://%s' % options.proxy,
-            'https': 'socks5h://%s' % options.proxy
-        }
-    else:
-        proxy = {}
-
-    if options.engines:
-        for engine in options.engines.split(','):
-            engines.append(support_engines[engine])
-
-    if options.domains is not None:
-        for p in options.domains.split(','):
-            p = p.strip().lower()
-            re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', p)
-            if len(re_domain) > 0 and re_domain[0][0] == p and tldextract.extract(p).suffix != '':
-                domains.append(p.strip())
-            else:
-                logger.error('Domain validation failed: {d}'.format(d=p))
-    elif options.input and os.path.isfile(options.input):
-        with open(options.input) as fh:
-            for line_domain in fh:
-                line_domain = line_domain.strip().lower()
-                re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
-                if len(re_domain) > 0 and re_domain[0][0] == line_domain and tldextract.extract(line_domain).suffix != '':
-                    domains.append(line_domain)
-                else:
-                    logger.error('Domain validation failed: {d}'.format(d=line_domain))
-    else:
-        logger.error('Please input vaild parameter. ie: "esd -d feei.cn" or "esd -f /Users/root/domains.txt"')
-
-    if 'esd' in os.environ:
-        debug = os.environ['esd']
-    else:
-        debug = False
-    logger.info('Debug: {d}'.format(d=debug))
-    logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
-
-    logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
+        if len(sys.argv) < 2:
+            logger.info("Usage: python ESD.py feei.cn [response filter] [--skip-rsc] [--split=1/4]")
+            exit(0)
+        domains = []
+        param = sys.argv[1].strip()
+        skip_rsc = False
+        engines = [Baidu,Google,Bing,Yahoo]
+        response_filter = None
+        split = None
+        if len(sys.argv) >= 3:
+            if sys.argv[2].strip().startswith('--skip-rsc'):
+                skip_rsc = True
+            elif sys.argv[2].strip().startswith('--split'):
+                split = sys.argv[2].strip()
+            else:
+                response_filter = sys.argv[2].strip()
+            for i in range(3, len(sys.argv)):
+                if sys.argv[i].strip().startswith('--skip-rsc'):
+                    skip_rsc = True
+                if sys.argv[i].strip().startswith('--split'):
+                    split = sys.argv[i].strip()
+        else:
+            response_filter = None
+        if 'esd' in os.environ:
+            debug = os.environ['esd']
+        else:
+            debug = False
+
+        if split is not None:
+            s = split.split('=')
+            split = s[1]
+
+        logger.info('Debug: {d}'.format(d=debug))
+        logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+        logger.info('--split: {s}'.format(s=split))
+        if os.path.isfile(param):
+            with open(param) as fh:
+                for line_domain in fh:
+                    line_domain = line_domain.strip().lower()
+                    re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
+                    if len(re_domain) > 0 and re_domain[0][0] == line_domain:
+                        domains.append(line_domain)
+                    else:
+                        logger.error('Domain validation failed: {d}'.format(d=line_domain))
+        else:
+            if ',' in param:
+                for p in param.split(','):
+                    domains.append(p.strip())
+            else:
+                domains.append(param)
+        logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines,
-                                proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info)
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
-
 
 if __name__ == '__main__':
     main()
