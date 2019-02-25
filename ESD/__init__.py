@@ -1038,7 +1038,7 @@ class EnumSubDomain(object):
             max_domain_len = max(map(len, self.data)) + 2
         else:
             max_domain_len = 2
-        output_format = '%-{0}sA:%-s\n'.format(max_domain_len)
+        output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
             for domain, ips in self.data.items():
                 # The format is consistent with other scanners to ensure that they are
