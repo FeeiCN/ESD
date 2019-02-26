@@ -1001,7 +1001,6 @@ class EnumSubDomain(object):
             total_subs = set(subs + dnspod_domains + subdomains + transfer_info + ca_subdomains)
             dnsquery = DNSQuery(self.domain, total_subs, self.domain)
             record_info = dnsquery.dns_query()
-            print(record_info)
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
             self.loop.run_until_complete(self.start(tasks))
             logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
