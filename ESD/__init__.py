@@ -151,8 +151,7 @@ class DNSTransfer(object):
             nameservers = [str(ns) for ns in nss]
             ns_addr = dns.resolver.query(nameservers[0], 'A')
             # dnspython 的 bug，需要设置 lifetime 参数
-            zones = dns.zone.from_xfr(dns.query.xfr(ns_addr, self.domain, relativize=False, timeout=2, lifetime=2),
-                                      check_origin=False)
+            zones = dns.zone.from_xfr(dns.query.xfr(ns_addr, self.domain, relativize=False, timeout=2, lifetime=2), check_origin=False)
             names = zones.nodes.keys()
             for n in names:
                 subdomain = ''
@@ -186,8 +185,7 @@ class CAInfo(object):
         s.settimeout(2)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cert_path = base_dir + '/cacert.pem'
-        connect = ssl.wrap_socket(
-            s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
+        connect = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
         connect.settimeout(2)
         connect.connect((ip, 443))
         cert_data = connect.getpeercert().get('subjectAltName')
@@ -350,10 +348,8 @@ class Bing(EngineBase):
 
     def extract_domains(self, resp):
         links_list = list()
-        link_regx = re.compile(
-            '<li class="b_algo"><div class="b_title"><h2><a target="_blank" href="(.*?)"')
-        link_regx2 = re.compile(
-            '<li class="b_algo"><h2><a target="_blank" href="(.*?)"')
+        link_regx = re.compile('<li class="b_algo"><div class="b_title"><h2><a target="_blank" href="(.*?)"')
+        link_regx2 = re.compile('<li class="b_algo"><h2><a target="_blank" href="(.*?)"')
         try:
             links1 = link_regx.findall(resp)
             links2 = link_regx2.findall(resp)
@@ -364,10 +360,7 @@ class Bing(EngineBase):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
                 if subdomain not in self.subdomains and subdomain != self.domain:
-                    logger.info(
-                        '{engine_name}: {subdomain}'.format(
-                            engine_name=self.engine_name,
-                            subdomain=subdomain))
+                    logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
                     self.subdomains.append(subdomain.strip())
         except Exception:
             pass
@@ -384,10 +377,8 @@ class Yahoo(EngineBase):
         self.MAX_PAGES = 0
 
     def extract_domains(self, resp):
-        link_regx2 = re.compile(
-            '<span class=" fz-.*? fw-m fc-12th wr-bw.*?">(.*?)</span>')
-        link_regx = re.compile(
-            '<span class="txt"><span class=" cite fw-xl fz-15px">(.*?)</span>')
+        link_regx2 = re.compile('<span class=" fz-.*? fw-m fc-12th wr-bw.*?">(.*?)</span>')
+        link_regx = re.compile('<span class="txt"><span class=" cite fw-xl fz-15px">(.*?)</span>')
         links_list = []
         try:
             links = link_regx.findall(resp)
@@ -401,8 +392,7 @@ class Yahoo(EngineBase):
                 if not subdomain.endswith(self.domain):
                     continue
                 if subdomain and subdomain not in self.subdomains and subdomain != self.domain:
-                    logger.info(
-                        '{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                    logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
                     self.subdomains.append(subdomain.strip())
         except Exception:
             pass
@@ -449,8 +439,7 @@ class Baidu(EngineBase):
                     subdomain_list.append(subdomain)
                     if subdomain not in self.subdomains and subdomain != self.domain:
                         found_newdomain = True
-                        logger.info(
-                            '{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
+                        logger.info('{engine_name}: {subdomain}'.format(engine_name=self.engine_name, subdomain=subdomain))
                         self.subdomains.append(subdomain.strip())
         except Exception:
             pass
@@ -502,10 +491,8 @@ class EnumSubDomain(object):
         self.is_wildcard_domain = False
         # Use a nonexistent domain name to determine whether
         # there is a pan-resolve based on the DNS resolution result
-        self.wildcard_sub = 'feei-esd-{random}'.format(
-            random=random.randint(0, 9999))
-        self.wildcard_sub3 = 'feei-esd-{random}.{random}'.format(
-            random=random.randint(0, 9999))
+        self.wildcard_sub = 'feei-esd-{random}'.format(random=random.randint(0, 9999))
+        self.wildcard_sub3 = 'feei-esd-{random}.{random}'.format(random=random.randint(0, 9999))
         # There is no domain name DNS resolution IP
         self.wildcard_ips = []
         # No domain name response HTML
@@ -556,9 +543,7 @@ class EnumSubDomain(object):
         """
         letter_count = line.count('{letter}')
         number_count = line.count('{number}')
-        letters = itertools.product(
-            string.ascii_lowercase,
-            repeat=letter_count)
+        letters = itertools.product(string.ascii_lowercase, repeat=letter_count)
         letters = [''.join(l) for l in letters]
         numbers = itertools.product(string.digits, repeat=number_count)
         numbers = [''.join(n) for n in numbers]
@@ -608,11 +593,8 @@ class EnumSubDomain(object):
             dicts_choose = int(s[0])
             dicts_count = int(s[1])
             dicts_every = int(math.ceil(len(dicts) / dicts_count))
-            dicts = [dicts[i:i + dicts_every]
-                     for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
-            logger.info(
-                'Sub domain dict split {count} and get {choose}st'.format(
-                    count=dicts_count, choose=dicts_choose))
+            dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
+            logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
 
         return dicts
 
@@ -642,6 +624,7 @@ class EnumSubDomain(object):
         except Exception as e:
             logger.info(sub_domain)
             logger.warning(traceback.format_exc())
+
         else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
@@ -718,8 +701,7 @@ class EnumSubDomain(object):
         except Exception as e:
             # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
             logger.warning(
-                'fetch exception: {e} {u}'.format(
-                    e=type(e).__name__, u=url))
+                'fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
             return None, None
 
     async def similarity(self, sub):
@@ -767,51 +749,34 @@ class EnumSubDomain(object):
                             location = location
                         status = history[-1].status
                         if location in skip_domain_with_history:
-                            logger.debug(
-                                'domain in skip: {s} {r} {l}'.format(
-                                    s=sub_domain, r=status, l=location))
+                            logger.debug('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
                             return
                         else:
                             # cnsuning.com suning.com
-                            if location[-len(self.domain) -
-                                        1:] == '.{d}'.format(d=self.domain):
+                            if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if location not in self.domains_rs:
                                     if location not in self.domains_rs_processed:
-                                        logger.info(
-                                            '[{sd}] add redirect domain: {l}({len})'.format(
-                                                sd=sub_domain, l=location, len=len(
-                                                    self.domains_rs)))
+                                        logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
                                         self.domains_rs.append(location)
-                                        self.domains_rs_processed.append(
-                                            location)
+                                        self.domains_rs_processed.append(location)
                             else:
-                                logger.info(
-                                    'not same domain: {l}'.format(
-                                        l=location))
+                                logger.info('not same domain: {l}'.format(l=location))
                     else:
-                        logger.info(
-                            'not domain(maybe path): {l}'.format(
-                                l=location))
+                        logger.info('not domain(maybe path): {l}'.format(l=location))
                 if html is None:
-                    logger.warning(
-                        'domain\'s html is none: {s}'.format(
-                            s=sub_domain))
+                    logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
                     return
                 # collect response html's domains
                 response_domains = re.findall(regex_domain, html)
-                response_domains = list(
-                    set(response_domains) - set([sub_domain]))
+                response_domains = list(set(response_domains) - set([sub_domain]))
                 for rd in response_domains:
                     rd = rd.strip().strip('.')
                     if rd.count('.') >= sub_domain.count('.') and rd[-len(sub_domain):] == sub_domain:
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
-                            logger.info(
-                                '[{sd}] add response domain: {s}({l})'.format(
-                                    sd=sub_domain, s=rd, l=len(
-                                        self.domains_rs)))
+                            logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd, l=len(self.domains_rs)))
                             self.domains_rs.append(rd)
                             self.domains_rs_processed.append(rd)
 
@@ -822,19 +787,15 @@ class EnumSubDomain(object):
                     # real_quick_ratio() > quick_ratio() > ratio()
                     # TODO bottleneck
                     if sub.count('.') == 0:  # secondary sub, ex: www
-                        ratio = SequenceMatcher(
-                            None, html, self.wildcard_html).real_quick_ratio()
+                        ratio = SequenceMatcher(None, html, self.wildcard_html).real_quick_ratio()
                         ratio = round(ratio, 3)
                     else:  # tertiary sub, ex: home.dev
-                        ratio = SequenceMatcher(
-                            None, html, self.wildcard_html3).real_quick_ratio()
+                        ratio = SequenceMatcher(None, html, self.wildcard_html3).real_quick_ratio()
                         ratio = round(ratio, 3)
                 self.remainder += -1
                 if ratio > self.rsc_ratio:
                     # passed
-                    logger.debug(
-                        '{r} RSC ratio: {ratio} (passed) {sub}'.format(
-                            r=self.remainder, sub=sub_domain, ratio=ratio))
+                    logger.debug('{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
                 else:
                     # added
                     # for def distinct func
@@ -842,9 +803,7 @@ class EnumSubDomain(object):
                     if self.response_filter is not None:
                         for resp_filter in self.response_filter.split(','):
                             if resp_filter in html:
-                                logger.debug(
-                                    '{r} RSC filter in response (passed) {sub}'.format(
-                                        r=self.remainder, sub=sub_domain))
+                                logger.debug('{r} RSC filter in response (passed) {sub}'.format(r=self.remainder, sub=sub_domain))
                                 return
                             else:
                                 continue
@@ -852,8 +811,7 @@ class EnumSubDomain(object):
                     else:
                         self.data[sub_domain] = self.wildcard_ips
                     logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(
-                            r=self.remainder, sub=sub_domain, ratio=ratio))
+                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -869,9 +827,7 @@ class EnumSubDomain(object):
                     m = 'Remove'
                 else:
                     m = 'Stay'
-                logger.info(
-                    '{d} : {d2} {ratio} {m}'.format(
-                        d=domain, d2=domain2, ratio=ratio, m=m))
+                logger.info('{d} : {d2} {ratio} {m}'.format(d=domain, d2=domain2, ratio=ratio, m=m))
 
     def dnspod(self):
         """
@@ -880,9 +836,7 @@ class EnumSubDomain(object):
         """
         # noinspection PyBroadException
         try:
-            content = requests.get(
-                'http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain),
-                timeout=5).text
+            content = requests.get('http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain), timeout=5).text
             domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
             domains = list(set(domains))
             tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
@@ -933,10 +887,7 @@ class EnumSubDomain(object):
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
             logger.info('Is all stable dns: NO, use the default dns server')
-            self.resolver = aiodns.DNSResolver(
-                loop=self.loop,
-                nameservers=self.stable_dns_servers,
-                timeout=self.resolve_timeout)
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers, timeout=self.resolve_timeout)
         # Wildcard domain
         is_wildcard_domain = not (stable_dns.count(None) == len(stable_dns))
         if is_wildcard_domain or self.is_wildcard_domain:
@@ -958,8 +909,7 @@ class EnumSubDomain(object):
                     self.wildcard_html3 = requests.get('http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain), headers=self.request_headers, timeout=10, verify=False).text
                     self.wildcard_html3 = self.data_clean(self.wildcard_html3)
                     self.wildcard_html3_len = len(self.wildcard_html3)
-                    logger.info(
-                        'Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
+                    logger.info('Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len, len2=self.wildcard_html3_len))
                 except requests.exceptions.SSLError:
                     logger.warning('SSL Certificate Error!')
                 except requests.exceptions.ConnectTimeout:
@@ -985,8 +935,7 @@ class EnumSubDomain(object):
                 logger.info('{domain} {ips}'.format(domain=domain, ips=ips['A']))
                 dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
             self.wildcard_subs = list(set(subs) - set(dns_subs))
-            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(
-                datetime.timedelta(seconds=time_consume_dns))))
+            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
             logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data), len_remain=len(self.wildcard_subs)))
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
@@ -1063,7 +1012,6 @@ class EnumSubDomain(object):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
-
         if len(self.data):
             max_domain_len = max(map(len, self.data)) + 2
         else:
@@ -1082,13 +1030,13 @@ class EnumSubDomain(object):
                 op.write(con)
                 opt.write(con)
 
+
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
-
 
 def banner():
     print("""\033[94m
