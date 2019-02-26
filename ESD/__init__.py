@@ -932,7 +932,7 @@ class EnumSubDomain(object):
             # Response similarity comparison
             dns_subs = []
             for domain, ips in self.data.items():
-                logger.info('{domain} {ips}'.format(domain=domain, ips=ips['A']))
+                logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
                 dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
             self.wildcard_subs = list(set(subs) - set(dns_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
