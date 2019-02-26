@@ -13,7 +13,6 @@
 """
 import os
 import re
-import sys
 import time
 import ssl
 import math
@@ -40,7 +39,6 @@ import threading
 import tldextract
 from optparse import OptionParser
 import urllib.parse as urlparse
-import urllib.parse as urllib
 from collections import Counter
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
@@ -72,6 +70,53 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 ssl.match_hostname = lambda cert, hostname: True
+
+
+class DNSQuery(object):
+    def __init__(self, root_domain):
+        self.root_domain = root_domain
+
+    def dns_query(self):
+        """
+        soa,txt,mx,aaaa
+        :param sub:
+        :return:
+        """
+        try:
+            soa = []
+            q_soa = dns.resolver.query(self.root_domain, 'SOA')
+            for a in q_soa:
+                soa.append(str(a.rname))
+                soa.append(str(a.mname))
+        except Exception as e:
+            logger.info('Query failed. {e}'.format(e=str(e)))
+        try:
+            aaaa = []
+            q_aaaa = dns.resolver.query(self.root_domain, 'AAAA')
+            aaaa = [str(a.address) for a in q_aaaa]
+        except Exception as e:
+            logger.info('Query failed. {e}'.format(e=str(e)))
+        try:
+            txt = []
+            q_txt = dns.resolver.query(self.root_domain, 'TXT')
+            txt = [t.strings[0].decode('utf-8') for t in q_txt]
+        except Exception as e:
+            logger.info('Query failed. {e}'.format(e=str(e)))
+        try:
+            mx = []
+            q_mx = dns.resolver.query(self.root_domain, 'MX')
+            mx = [str(m.exchange) for m in q_mx]
+        except Exception as e:
+            logger.info('Query failed. {e}'.format(e=str(e)))
+        domain_set = soa + aaaa + txt + mx
+        domain_list = [i for i in domain_set]
+        for p in domain_set:
+            re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\.?)$', p)
+            if len(re_domain) > 0 and self.root_domain in re_domain[0][0] and tldextract.extract(p).suffix != '':
+                continue
+            else:
+                domain_list.remove(p)
+        return domain_list
 
 
 class DNSTransfer(object):
@@ -390,7 +435,7 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[], proxy={}, brute=True, transfer=False, cainfo=False):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -467,15 +512,6 @@ class EnumSubDomain(object):
         # collect redirecting domains and response domains
         self.domains_rs = []
         self.domains_rs_processed = []
-
-    def raise_domain_error(self, sub_domain, e):
-        err_code, err_msg = e.args[0], e.args[1]
-        # 1:  DNS server returned answer with no data
-        # 4:  Domain name not found
-        # 11: Could not contact DNS servers
-        # 12: Timeout while contacting DNS servers
-        if err_code not in [1, 4, 11, 12]:
-            logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
 
     def generate_general_dicts(self, line):
         """
@@ -555,7 +591,17 @@ class EnumSubDomain(object):
         try:
             ret = await self.resolver.query(sub_domain, 'A')
         except aiodns.error.DNSError as e:
-            self.raise_domain_error(sub_domain, e)
+            err_code, err_msg = e.args[0], e.args[1]
+            # 1:  DNS server returned answer with no data
+            # 4:  Domain name not found
+            # 11: Could not contact DNS servers
+            # 12: Timeout while contacting DNS servers
+            if err_code not in [1, 4, 11, 12]:
+                logger.info('{domain} {exception}'.format(domain=sub_domain, exception=e))
+        except Exception as e:
+            logger.info(sub_domain)
+            logger.warning(traceback.format_exc())
+
         else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
@@ -569,35 +615,11 @@ class EnumSubDomain(object):
                 else:
                     logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                if sub != self.wildcard_sub:
-                    try:
-                        soa = []
-                        q_soa = await self.resolver.query(sub_domain, 'SOA')
-                        soa = [q_soa.nsname, q_soa.hostmaster]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        aaaa = []
-                        q_aaaa = await self.resolver.query(sub_domain, 'AAAA')
-                        aaaa = [a.host for a in q_aaaa]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        txt = []
-                        q_txt = await self.resolver.query(sub_domain, 'TXT')
-                        txt = [t.text.decode('utf-8') for t in q_txt]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    try:
-                        mx = []
-                        q_mx = await self.resolver.query(sub_domain, 'MX')
-                        mx = [m.host for m in q_mx]
-                    except aiodns.error.DNSError as e:
-                        self.raise_domain_error(sub_domain, e)
-                    self.data[sub_domain] = {'A': sorted(domain_ips), 'AAAA': aaaa, 'SOA': soa, 'TXT': txt, 'MX': mx}
-                    logger.info('{r} {sub} A:{ips},SOA:{soa},AAAA:{aaaa},TXT:{txt},MX:{mx}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips, soa=soa, aaaa=aaaa, txt=txt, mx=mx))
+                if sub_domain != self.wildcard_sub:
+                    self.data[sub_domain] = sorted(domain_ips)
+                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
-        return sub, ret
+        return sub_domain, ret
 
     @staticmethod
     def limited_concurrency_coroutines(coros, limit):
@@ -799,6 +821,7 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
+    @property
     def run(self):
         """
         Run
@@ -945,49 +968,38 @@ class EnumSubDomain(object):
                 self.loop.run_until_complete(self.start(tasks))
             logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
+        #use TXT,SOA,MX,AAAA record to find sub domains
+        logger.info('Enumerating subdomains with TXT, SOA, MX, AAAA record...')
+        dnsquery = DNSQuery(self.domain)
+        record_info = dnsquery.dns_query()
+        tasks = (self.query(record[:record.find('.')]) for record in record_info)
+        self.loop.run_until_complete(self.start(tasks))
+        logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
+
         # write output
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
             os.mkdir(tmp_dir, 0o777)
         output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain, time=datetime.datetime.now().strftime("%Y-%m_%d_%H-%M"))
         output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
+        if len(self.data):
+            max_domain_len = max(map(len, self.data)) + 2
+        else:
+            max_domain_len = 2
+        output_format = '%-{0}s%-s\n'.format(max_domain_len)
         with open(output_path_with_time, 'w') as opt, open(output_path, 'w') as op:
-            if len(self.data):
-                max_domain_len = len(sorted(self.data.keys(), key=lambda x: len(x), reverse=True)[0]) + 2
-                max_a_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['A'])), reverse=True)[0]['A'])) + 2
-                max_aaaa_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['AAAA'])), reverse=True)[0]['AAAA'])) + 2
-                max_soa_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['SOA'])), reverse=True)[0]['SOA'])) + 2
-                max_txt_len = len(', '.join(sorted(self.data.values(), key=lambda x: len(', '.join(x['TXT'])), reverse=True)[0]['TXT'])) + 2
+            for domain, ips in self.data.items():
+                # The format is consistent with other scanners to ensure that they are
+                # invoked at the same time without increasing the cost of
+                # resolution
+                if ips is None or len(ips) == 0:
+                    ips_split = ''
+                else:
+                    ips_split = ','.join(ips)
+                con = output_format % (domain, ips_split)
+                op.write(con)
+                opt.write(con)
 
-                for domain, ips in self.data.items():
-                    # The format is consistent with other scanners to ensure that they are
-                    # invoked at the same time without increasing the cost of
-                    # resolution
-                    if ips['A'] is None or len(ips['A']) == 0:
-                        a_split = ''
-                    else:
-                        a_split = ', '.join(ips['A'])
-                    if ips['AAAA'] is None or len(ips['AAAA']) == 0:
-                        aaaa_split = ''
-                    else:
-                        aaaa_split = ', '.join(ips['AAAA'])
-                    if ips['SOA'] is None or len(ips['SOA']) == 0:
-                        soa_split = ''
-                    else:
-                        soa_split = ', '.join(ips['SOA'])
-                    if ips['TXT'] is None or len(ips['TXT']) == 0:
-                        txt_split = ''
-                    else:
-                        txt_split = ', '.join(ips['TXT'])
-                    if ips['MX'] is None or len(ips['MX']) == 0:
-                        mx_split = ''
-                    else:
-                        mx_split = ', '.join(ips['MX'])
-
-                    output_format = '%-{0}sA:%-{1}sAAAA:%-{2}sSOA:%-{3}sTXT:%-{4}sMX:%-s\n'.format(max_domain_len, max_a_len, max_aaaa_len, max_soa_len, max_txt_len)
-                    con = output_format % (domain, a_split, aaaa_split, soa_split, txt_split, mx_split)
-                    op.write(con)
-                    opt.write(con)
 
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
@@ -995,7 +1007,6 @@ class EnumSubDomain(object):
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
-
 
 def banner():
     print("""\033[94m
@@ -1088,9 +1099,8 @@ def main():
     logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines,
-                                proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info)
-            esd.run()
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info)
+            esd.run
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
