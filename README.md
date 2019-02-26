@@ -93,7 +93,7 @@ esd --domain qq.com --ca-info
 **程序调用**
 ```python
 from ESD import EnumSubDomain
-domains = EnumSubDomain('feei.cn').run()
+domains = EnumSubDomain('feei.cn').run
 ```
 
 ## 后续
