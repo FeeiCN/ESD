@@ -998,7 +998,7 @@ class EnumSubDomain(object):
         # use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
             logger.info('Enumerating subdomains with TXT, SOA, MX, AAAA record...')
-            total_subs = set(subs + dnspod_domains + subdomains + transfer_info + ca_subdomains)
+            total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
             dnsquery = DNSQuery(self.domain, total_subs, self.domain)
             record_info = dnsquery.dns_query()
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
@@ -1055,7 +1055,7 @@ def main():
     parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
     parser.add_option('-f', '--file', dest='input', help='Import domains from this file')
     parser.add_option('-F', '--filter', dest='filter', help='Response filter')
-    parser.add_option('-s', '--skip-rsc', dest='skiprsc', help='Skip response similary compare', default=False)
+    parser.add_option('-s', '--skip-rsc', dest='skiprsc', help='Skip response similary compare', action='store_true', default=False)
     parser.add_option('-e', '--engines', dest='engines', help='Choose an engine in baidu,google,bing or yahoo, split with ","')
     parser.add_option('-S', '--split', dest='split', help='Split the dict into several parts', default='1/1')
     parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
@@ -1102,7 +1102,10 @@ def main():
 
     if options.engines:
         for engine in options.engines.split(','):
-            engines.append(support_engines[engine])
+            if engine.lower() in support_engines:
+                engines.append(support_engines[engine])
+    else:
+        engines = [Baidu,Google,Bing,Yahoo]
 
     if options.domains is not None:
         for p in options.domains.split(','):
