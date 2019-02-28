@@ -36,15 +36,13 @@ import dns.zone
 import dns.resolver
 import multiprocessing
 import threading
-import tldextract
-from optparse import OptionParser
 import urllib.parse as urlparse
 from collections import Counter
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.22'
+__version__ = '0.0.21'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -69,8 +67,13 @@ logger = colorlog.getLogger('ESD')
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-ssl.match_hostname = lambda cert, hostname: True
+#shadowsocks代理
+proxies = {
+    "http": "socks5h://127.0.0.1:1080",
+    "https": "socks5h://127.0.0.1:1080",
+    }
 
+ssl.match_hostname = lambda cert, hostname: True
 
 # 只采用了递归，速度非常慢，在优化完成前不建议开启
 class DNSQuery(object):
@@ -162,7 +165,7 @@ class DNSTransfer(object):
                 if subdomain != self.domain:
                     ret_zones.append(subdomain)
             return ret_zones
-        except BaseException:
+        except:
             return []
 
 
@@ -213,9 +216,8 @@ class CAInfo(object):
             subs.append(sub[:len(sub) - len(self.domain) - 1])
         return subs
 
-
 class EngineBase(multiprocessing.Process):
-    def __init__(self, base_url, domain, q, verbose, proxy):
+    def __init__(self,base_url,domain,q,verbose):
         multiprocessing.Process.__init__(self)
         self.lock = threading.Lock()
         self.q = q
@@ -224,19 +226,19 @@ class EngineBase(multiprocessing.Process):
         self.domain = domain
         self.session = requests.Session()
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.8',
-            'Accept-Encoding': 'gzip',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.8',
+              'Accept-Encoding': 'gzip',
         }
         self.timeout = 30
         self.verbose = verbose
-        self.proxy = proxy
+        
 
     def get_page(self, num):
         return num + 10
 
-    # 应当在子类里重写
+    #应当在子类里重写
     def check_response_errors(self, resp):
         return True
 
@@ -249,7 +251,7 @@ class EngineBase(multiprocessing.Process):
             return 0
         return response.text if hasattr(response, "text") else response.content
 
-    def check_max_pages(self, num):
+    def check_max_pages(self,num):
         if self.MAX_PAGES == 0:
             return False
         return num >= self.MAX_PAGES
@@ -257,11 +259,10 @@ class EngineBase(multiprocessing.Process):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(
-                url, headers=self.headers, timeout=self.timeout)
+            resp = self.session.get(url, headers=self.headers, timeout=self.timeout)
         except Exception:
             resp = None
-
+        
         return self.get_response(resp)
 
     def enumerate(self):
@@ -298,16 +299,16 @@ class EngineBase(multiprocessing.Process):
 
 
 class Google(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = "https://www.google.com/search?q=site:{domain}+-www.{domain}&start={page_no}"
-        super(Google, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Google,self).__init__(base_url,domain,q,verbose)
         self.MAX_DOMAINS = 11
         self.MAX_PAGES = 200
         self.engine_name = 'Google'
 
     def extract_domains(self, resp):
         links_list = list()
-        link_regx = re.compile(r'<cite.*?>(.*?)<\/cite>')
+        link_regx = re.compile('<cite.*?>(.*?)<\/cite>')
         try:
             links_list = link_regx.findall(resp)
             for link in links_list:
@@ -323,7 +324,7 @@ class Google(EngineBase):
         return links_list
 
     def check_response_errors(self, resp):
-        if isinstance(resp, int):
+        if isinstance(resp,int):
             logger.warning("Please use proxy to access Google!")
             logger.warning("Finished now the Google Enumeration ...")
             return False
@@ -332,17 +333,18 @@ class Google(EngineBase):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(url, proxies=self.proxy, headers=self.headers, timeout=self.timeout)
+            #因为众所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
         except Exception as e:
             resp = None
-
+        
         return self.get_response(resp)
 
 
 class Bing(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = 'https://www.bing.com/search?q=domain%3A{domain}%20-www.{domain}&go=Submit&first={page_no}'
-        super(Bing, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Bing,self).__init__(base_url,domain,q,verbose)
         self.MAX_PAGES = 30
         self.engine_name = 'Bing'
 
@@ -355,7 +357,7 @@ class Bing(EngineBase):
             links2 = link_regx2.findall(resp)
             links_list = links1 + links2
             for link in links_list:
-                link = re.sub(r'<(\/)?strong>|<span.*?>|<|>', '', link)
+                link = re.sub('<(\/)?strong>|<span.*?>|<|>', '', link)
                 if not (link.startswith('http') or link.startswith('https')):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
@@ -369,9 +371,9 @@ class Bing(EngineBase):
 
 
 class Yahoo(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self, domain, q, verbose):
         base_url = "https://search.yahoo.com/search?p=site%3A{domain}%20-domain%3Awww.{domain}&b={page_no}"
-        super(Yahoo, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Yahoo,self).__init__(base_url,domain,q,verbose)
         self.engine_name = "Yahoo"
         self.MAX_DOMAINS = 10
         self.MAX_PAGES = 0
@@ -385,7 +387,7 @@ class Yahoo(EngineBase):
             links2 = link_regx2.findall(resp)
             links_list = links + links2
             for link in links_list:
-                link = re.sub(r"<(\/)?b>", "", link)
+                link = re.sub("<(\/)?b>", "", link)
                 if not link.startswith('http'):
                     link = "http://" + link
                 subdomain = urlparse.urlparse(link).netloc
@@ -400,7 +402,7 @@ class Yahoo(EngineBase):
         return links_list
 
     def check_response_errors(self, resp):
-        if isinstance(resp, int):
+        if isinstance(resp,int):
             logger.warning("Please use proxy to access Yahoo!")
             logger.warning("Finished now the Yahoo Enumeration ...")
             return False
@@ -409,17 +411,18 @@ class Yahoo(EngineBase):
     def send_req(self, page_no=1):
         url = self.base_url.format(domain=self.domain, page_no=page_no)
         try:
-            resp = self.session.get(url, proxies=self.proxy, headers=self.headers, timeout=self.timeout)
+            #因为众所周知的原因，访问yahoo和Google需要使用代理，这里我使用了自己ss
+            resp = self.session.get(url,proxies=proxies,headers=self.headers, timeout=self.timeout)
         except Exception as e:
             resp = None
-
+        
         return self.get_response(resp)
 
 
 class Baidu(EngineBase):
-    def __init__(self, domain, q, verbose, proxy):
+    def __init__(self,domain,q,verbose):
         base_url = "https://www.baidu.com/s?ie=UTF-8&wd=site%3A{domain}%20-site%3Awww.{domain}&pn={page_no}"
-        super(Baidu, self).__init__(base_url, domain, q, verbose, proxy)
+        super(Baidu,self).__init__(base_url,domain,q,verbose)
         self.MAX_PAGES = 30
         self.engine_name = 'Baidu'
 
@@ -462,7 +465,6 @@ class EnumSubDomain(object):
         logger.info('----------')
         logger.info('Start domain: {d}'.format(d=domain))
         self.engines = engines
-        self.proxy = proxy
         self.data = {}
         self.domain = domain
         self.skip_rsc = skip_rsc
@@ -524,7 +526,8 @@ class EnumSubDomain(object):
             'DNT': '1',
             'Referer': 'http://www.baidu.com/',
             'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'}
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        }
         # Filter the domain's response(regex)
         self.response_filter = response_filter
         # debug mode
@@ -592,8 +595,8 @@ class EnumSubDomain(object):
             s = self.split.split('/')
             dicts_choose = int(s[0])
             dicts_count = int(s[1])
-            dicts_every = int(math.ceil(len(dicts) / dicts_count))
-            dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
+            dicts_every = int(math.ceil(len(dicts)/dicts_count))
+            dicts = [dicts[i:i+dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose-1]
             logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
 
         return dicts
@@ -659,7 +662,8 @@ class EnumSubDomain(object):
                         futures.remove(f)
                         try:
                             nf = next(coros)
-                            futures.append(asyncio.ensure_future(nf))
+                            futures.append(
+                                asyncio.ensure_future(nf))
                         except StopIteration:
                             pass
                         return f.result()
@@ -682,7 +686,7 @@ class EnumSubDomain(object):
             html = re.sub(r'\s', '', data)
             html = re.sub(r'<script(?!.*?src=).*?>.*?</script>', '', html)
             return html
-        except BaseException:
+        except:
             return data
 
     @staticmethod
@@ -809,8 +813,7 @@ class EnumSubDomain(object):
                         self.data[sub_domain] = self.wildcard_ips
                     else:
                         self.data[sub_domain] = self.wildcard_ips
-                    logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -851,7 +854,7 @@ class EnumSubDomain(object):
         :return:
         """
         start_time = time.time()
-        subs = self.load_sub_domain_dict() if self.brute else []
+        subs = self.load_sub_domain_dict()
         self.remainder = len(subs)
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
         logger.info('Generate coroutines...')
@@ -926,7 +929,7 @@ class EnumSubDomain(object):
             self.loop.run_until_complete(self.start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
-
+        
         # DNSPod JSONP API
         logger.info('Collect DNSPod JSONP API\'s subdomains...')
         dnspod_domains = self.dnspod()
@@ -1025,13 +1028,22 @@ class EnumSubDomain(object):
                 op.write(con)
                 opt.write(con)
 
-
+                # The format is consistent with other scanners to ensure that they are
+                # invoked at the same time without increasing the cost of resolution
+                if ips is None or len(ips) == 0:
+                    ips_split = ''
+                else:
+                    ips_split = ','.join(ips)
+                con = output_format % (domain, ips_split)
+                op.write(con)
+                opt.write(con)
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
+
 
 def banner():
     print("""\033[94m
@@ -1110,35 +1122,49 @@ def main():
             if len(re_domain) > 0 and re_domain[0][0] == p and tldextract.extract(p).suffix != '':
                 domains.append(p.strip())
             else:
-                logger.error('Domain validation failed: {d}'.format(d=p))
-    elif options.input and os.path.isfile(options.input):
-        with open(options.input) as fh:
-            for line_domain in fh:
-                line_domain = line_domain.strip().lower()
-                re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
-                if len(re_domain) > 0 and re_domain[0][0] == line_domain and tldextract.extract(line_domain).suffix != '':
-                    domains.append(line_domain)
-                else:
-                    logger.error('Domain validation failed: {d}'.format(d=line_domain))
-    else:
-        logger.error('Please input vaild parameter. ie: "esd -d feei.cn" or "esd -f /Users/root/domains.txt"')
+                response_filter = sys.argv[2].strip()
+            for i in range(3, len(sys.argv)):
+                if sys.argv[i].strip().startswith('--skip-rsc'):
+                    skip_rsc = True
+                if sys.argv[i].strip().startswith('--split'):
+                    split = sys.argv[i].strip()
+        else:
+            response_filter = None
+        if 'esd' in os.environ:
+            debug = os.environ['esd']
+        else:
+            debug = False
 
-    if 'esd' in os.environ:
-        debug = os.environ['esd']
-    else:
-        debug = False
-    logger.info('Debug: {d}'.format(d=debug))
-    logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+        if split is not None:
+            s = split.split('=')
+            split = s[1]
 
-    logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
-    try:
+        logger.info('Debug: {d}'.format(d=debug))
+        logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+        logger.info('--split: {s}'.format(s=split))
+        if os.path.isfile(param):
+            with open(param) as fh:
+                for line_domain in fh:
+                    line_domain = line_domain.strip().lower()
+                    re_domain = re.findall(r'^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,})$', line_domain)
+                    if len(re_domain) > 0 and re_domain[0][0] == line_domain:
+                        domains.append(line_domain)
+                    else:
+                        logger.error('Domain validation failed: {d}'.format(d=line_domain))
+        else:
+            if ',' in param:
+                for p in param.split(','):
+                    domains.append(p.strip())
+            else:
+                domains.append(param)
+        logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
         for d in domains:
             esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info, multiresolve=multiresolve)
             esd.run
+
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
-
 
 if __name__ == '__main__':
     main()
