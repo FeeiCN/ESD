@@ -843,7 +843,6 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
-    @property
     def run(self):
         """
         Run
