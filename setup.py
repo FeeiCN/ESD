@@ -38,5 +38,7 @@ setuptools.setup(
         "Topic :: Security", "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"),
     include_package_data=True,
+
     package_data={'': ['*.esd'], '': ['*.pem']},
     entry_points={'console_scripts': ['esd=ESD:main']})
+
