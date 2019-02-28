@@ -638,7 +638,7 @@ class EnumSubDomain(object):
                 else:
                     logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                if sub_domain != self.wildcard_sub:
+                if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
@@ -700,8 +700,7 @@ class EnumSubDomain(object):
                     return await response.text(), response.history
         except Exception as e:
             # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
-            logger.warning(
-                'fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
+            logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
             return None, None
 
     async def similarity(self, sub):
@@ -714,7 +713,9 @@ class EnumSubDomain(object):
         if sub == '@' or sub == '':
             sub_domain = self.domain
         else:
+            sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+
         if sub_domain in self.domains_rs:
             self.domains_rs.remove(sub_domain)
         full_domain = 'http://{sub_domain}'.format(sub_domain=sub_domain)
@@ -727,8 +728,7 @@ class EnumSubDomain(object):
             '{domain}'.format(domain=sub_domain),
         ]
         try:
-            regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(
-                d=self.domain)
+            regex_domain = r"((?!\/)(?:(?:[a-z\d-]*\.)+{d}))".format(d=self.domain)
             resolver = AsyncResolver(nameservers=self.dns_servers)
             conn = aiohttp.TCPConnector(resolver=resolver)
             async with aiohttp.ClientSession(connector=conn, headers=self.request_headers) as session:
@@ -743,12 +743,11 @@ class EnumSubDomain(object):
                         else:
                             location = location
                         try:
-                            location = re.match(
-                                regex_domain, location).group(0)
+                            location = re.match(regex_domain, location).group(0)
                         except AttributeError:
                             location = location
                         status = history[-1].status
-                        if location in skip_domain_with_history:
+                        if location in skip_domain_with_history and len(history) >= 2:
                             logger.debug('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
                             return
                         else:
@@ -928,32 +927,6 @@ class EnumSubDomain(object):
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
-        if self.is_wildcard_domain and not self.skip_rsc:
-            # Response similarity comparison
-            dns_subs = []
-            for domain, ips in self.data.items():
-                logger.info('{domain} {ips}'.format(domain=domain, ips=ips))
-                dns_subs.append(domain.replace('.{0}'.format(self.domain), ''))
-            self.wildcard_subs = list(set(subs) - set(dns_subs))
-            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
-            logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data), len_remain=len(self.wildcard_subs)))
-            self.coroutine_count = self.coroutine_count_request
-            self.remainder = len(self.wildcard_subs)
-            tasks = (self.similarity(sub) for sub in self.wildcard_subs)
-            self.loop.run_until_complete(self.start(tasks))
-
-            # Distinct last domains use RSC
-            # Maybe misinformation
-            # self.distinct()
-
-            time_consume_request = int(time.time() - dns_time)
-            logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
-        # RS(redirect/response) domains
-        while len(self.domains_rs) != 0:
-            logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
-            tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
-            self.loop.run_until_complete(self.start(tasks))
-
         # DNSPod JSONP API
         logger.info('Collect DNSPod JSONP API\'s subdomains...')
         dnspod_domains = self.dnspod()
@@ -995,15 +968,38 @@ class EnumSubDomain(object):
                 self.loop.run_until_complete(self.start(tasks))
             logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
+        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
         # use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
             logger.info('Enumerating subdomains with TXT, SOA, MX, AAAA record...')
-            total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
             dnsquery = DNSQuery(self.domain, total_subs, self.domain)
             record_info = dnsquery.dns_query()
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
             self.loop.run_until_complete(self.start(tasks))
             logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
+
+        if self.is_wildcard_domain and not self.skip_rsc:
+            # Response similarity comparison
+            total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
+            self.wildcard_subs = list(set(subs).union(total_subs))
+            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
+            logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data), len_remain=len(self.wildcard_subs)))
+            self.coroutine_count = self.coroutine_count_request
+            self.remainder = len(self.wildcard_subs)
+            tasks = (self.similarity(sub) for sub in self.wildcard_subs)
+            self.loop.run_until_complete(self.start(tasks))
+
+            # Distinct last domains use RSC
+            # Maybe misinformation
+            # self.distinct()
+
+            time_consume_request = int(time.time() - dns_time)
+            logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+        # RS(redirect/response) domains
+        while len(self.domains_rs) != 0:
+            logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
+            tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
+            self.loop.run_until_complete(self.start(tasks))
 
         # write output
         tmp_dir = '/tmp/esd'
