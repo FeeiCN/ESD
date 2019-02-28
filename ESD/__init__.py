@@ -1072,6 +1072,7 @@ def main():
     response_filter = options.filter
     skip_rsc = options.skiprsc
     split_list = options.split.split('/')
+    split = options.split
     brute = options.nobrute
     dns_transfer = options.transfer
     ca_info = options.cainfo
@@ -1080,11 +1081,11 @@ def main():
     try:
         if len(split_list) != 2 or int(split_list[0]) > int(split_list[1]):
             logger.error('Invaild split parameter,can not split the dict')
+            split = None
     except:
         logger.error('Split validation failed: {d}'.format(d=split_list))
         exit(0)
-    else:
-        split = None
+
 
     if options.proxy:
         proxy = {
