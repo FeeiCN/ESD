@@ -754,11 +754,10 @@ class EnumSubDomain(object):
                             # cnsuning.com suning.com
                             if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
-                                if location not in self.domains_rs:
-                                    if location not in self.domains_rs_processed:
-                                        logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
-                                        self.domains_rs.append(location)
-                                        self.domains_rs_processed.append(location)
+                                if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
+                                    logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
+                                    self.domains_rs.append(location)
+                                    self.domains_rs_processed.append(location)
                             else:
                                 logger.info('not same domain: {l}'.format(l=location))
                     else:
