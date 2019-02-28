@@ -1132,7 +1132,7 @@ def main():
     try:
         for d in domains:
             esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info, multiresolve=multiresolve)
-            esd.run
+            esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
         exit(0)
