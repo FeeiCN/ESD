@@ -39,6 +39,6 @@ setuptools.setup(
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"),
     include_package_data=True,
 
-    package_data={'': ['*.esd'], '': ['*.pem']}
+    package_data={'': ['*.esd'], '': ['*.pem']},
     entry_points={'console_scripts': ['esd=ESD:main']})
 
