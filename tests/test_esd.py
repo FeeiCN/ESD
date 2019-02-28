@@ -99,7 +99,7 @@ subs = ['planet.python.org', 'dinsdale.python.org', 'wiki', 'discuss.python.org'
 
 def test_dns_query():
     before = time.time()
-    enum = DNSQuery(root_domain, subs)
+    enum = DNSQuery(root_domain,subs, root_domain)
     res = enum.dns_query()
     now = time.time()
     print(now - before)
