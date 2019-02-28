@@ -1125,7 +1125,7 @@ def main():
     if 'esd' in os.environ:
         debug = os.environ['esd']
     else:
-        debug = True
+        debug = False
     logger.info('Debug: {d}'.format(d=debug))
     logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
 
