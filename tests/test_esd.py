@@ -1,9 +1,9 @@
 import time
 from ESD import EnumSubDomain
+from ESD import DNSQuery
 from difflib import SequenceMatcher
 
-
-def test_load_sub_domain_dict():
+'''def test_load_sub_domain_dict():
     esd = EnumSubDomain('feei.cn')
     assert 'www' in esd.load_sub_domain_dict()
 
@@ -92,3 +92,21 @@ def test_rsc():
 </body></html>"""
     ratio = SequenceMatcher(None, a_html, b_html).real_quick_ratio()
     assert ratio > 0.8
+
+root_domain = 'python.org'
+subs = ['planet.python.org', 'dinsdale.python.org', 'wiki', 'discuss.python.org', 'front', 'bugs']
+
+
+def test_dns_query():
+    before = time.time()
+    enum = DNSQuery(root_domain,subs, root_domain)
+    res = enum.dns_query()
+    now = time.time()
+    print(now - before)
+    print(res)
+
+
+test_dns_query()'''
+domain_fuzz = EnumSubDomain('python.org',debug=True)
+a = domain_fuzz.run()
+
