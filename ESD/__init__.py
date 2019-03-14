@@ -221,12 +221,12 @@ class CAInfo(object):
 
 
 # 使用shodan接口进行枚举，但经测试并不能增加多少成果
-class Shodan(object):
-    def __init__(self, skey, domain):
+class ShodanEngine(object):
+    def __init__(self, skey, conf, domain):
         self.domain = domain
+        self.conf = conf
         self.skey = skey
         self.api = None
-        self.conf = configparser.ConfigParser()
 
     # 初始化shodan的api
     def initialize(self):
@@ -236,9 +236,9 @@ class Shodan(object):
             if result:
                 logger.warning('Initializ failed, please check your key.')
                 return False
-            self.conf.read("key.ini")
             self.conf.set("shodan", "shodan_key", self.skey)
             self.conf.write(open("key.ini", "w"))
+            self.api = Shodan(get_api_key())
         elif get_api_key():
             self.api = Shodan(get_api_key())
         else:
@@ -258,8 +258,8 @@ class Shodan(object):
 
 
 # fofa太落后了，sdk不支持python3，就只能调用restful api了，但是挖掘成果比shodan多
-class Fofa(object):
-    def __init__(self, fofa_struct, domain):
+class FofaEngine(object):
+    def __init__(self, fofa_struct, conf, domain):
         self.base_url = "https://fofa.so/api/v1/search/all?email={email}&key={key}&qbase64={domain}"
         self.email = fofa_struct['femail']
         self.fkey = fofa_struct['fkey']
@@ -271,25 +271,32 @@ class Fofa(object):
             'Accept-Encoding': 'gzip',
         }
         self.timeout = 30
-        self.conf = configparser.ConfigParser()
+        self.conf = conf
 
     def initialize(self):
-        self.conf.read("key.ini")
-        self.conf.set("fofa", "fofa_key", self.fkey)
-        self.conf.set("fofa", "fofa_email", self.email)
-        self.conf.write(open("key.ini", "w"))
+        if self.fkey is not None and self.email is not None:
+            self.conf.set("fofa", "fofa_key", self.fkey)
+            self.conf.set("fofa", "fofa_email", self.email)
+            self.conf.write(open("key.ini", "w"))
+            return True
+        else:
+            self.fkey = self.conf.items("fofa")[0][1]
+            self.email = self.conf.items("fofa")[1][1]
+            return True
+        return False
 
     def search(self):
         result = list()
         url = self.base_url.format(email=self.email, key=self.fkey, domain=self.domain)
         try:
             resp = requests.Session().get(url, headers=self.headers, timeout=self.timeout)
-            json_resp = json.loads(resp)
+            json_resp = json.loads(resp.text)
             for res in json_resp['results']:
                 domain = urlparse.urlparse(res[0]).netloc
                 result.append(domain[:domain.find('.')])
-        except Exception:
-            result = None
+        except Exception as e:
+            print(str(e))
+            result = []
 
         return result
 
@@ -553,6 +560,7 @@ class EnumSubDomain(object):
         self.multiresolve = multiresolve
         self.skey = shodan_key
         self.fofa_struct = fofa
+        self.conf = configparser.ConfigParser()
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -1055,25 +1063,30 @@ class EnumSubDomain(object):
 
         # Use shodan to enumerate subdomains (need key and money)
         shodan_result = []
-        if self.skey:
+        self.conf.read("key.ini")
+        shodan = ShodanEngine(self.skey, self.conf, self.domain)
+        is_success = shodan.initialize()
+        if is_success:
             logger.info('Enumerating subdomains with Shodan')
-            shodan = Shodan(self.skey, self.domain)
-            is_success = shodan.initialize()
-            if is_success:
-                shodan_result = shodan.search()
+            shodan_result = shodan.search()
+            if len(shodan_result):
                 tasks = (self.query(sub) for sub in shodan_result)
                 self.loop.run_until_complete(self.start(tasks))
+            logger.info("Shodan subdomain count: {subdomains_count}".format(subdomains_count=len(shodan_result)))
 
         # Use fofa to enumerate subdomains (need key and money)
         fofa_result = []
-        if self.fofa_struct['fkey'] is not None and self.fofa_struct['femail'] is not None:
-            fofa = Fofa(self.fofa_struct,self.domain)
-            fofa.initialize()
+        fofa = FofaEngine(self.fofa_struct, self.conf, self.domain)
+        is_success = fofa.initialize()
+        if is_success:
+            logger.info("Enumerating subdomains with Fofa")
             fofa_result = fofa.search()
-            tasks = (self.query(sub) for sub in fofa_result)
-            self.loop.run_until_complete(self.start(tasks))
+            if len(fofa_result):
+                tasks = (self.query(sub) for sub in fofa_result)
+                self.loop.run_until_complete(self.start(tasks))
+            logger.info("Fofa subdomain count: {subdomains_count}".format(subdomains_count=len(fofa_result)))
 
-        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + shodan_result + fofa_result)
+        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
