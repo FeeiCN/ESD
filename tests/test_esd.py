@@ -107,6 +107,6 @@ def test_dns_query():
 
 
 test_dns_query()'''
-domain_fuzz = EnumSubDomain('python.org',debug=True)
+domain_fuzz = EnumSubDomain('ztbest.com',debug=True)
 a = domain_fuzz.run()
 
