@@ -536,7 +536,7 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, skey=None, fofa={}):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, shodan_key=None, fofa={}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -551,7 +551,7 @@ class EnumSubDomain(object):
         self.transfer = transfer
         self.cainfo = cainfo
         self.multiresolve = multiresolve
-        self.skey = skey
+        self.skey = shodan_key
         self.fofa_struct = fofa
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
@@ -1163,9 +1163,9 @@ def main():
     parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
     parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
     parser.add_option('-m', '--multi-resolve', dest='multiresolve', help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
-    parser.add_option('-skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
-    parser.add_option('-fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
-    parser.add_option('-femail', '--fofa-email', dest='fofaemail', help='The email of your fofa account')
+    parser.add_option('--skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
+    parser.add_option('--fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
+    parser.add_option('--femail', '--fofa-email', dest='fofaemail', help='The email of your fofa account')
     (options, args) = parser.parse_args()
 
     support_engines = {
@@ -1244,7 +1244,7 @@ def main():
     logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info, multiresolve=multiresolve, shodan=skey, fofa=fofa_struct)
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info, multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
