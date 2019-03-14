@@ -19,7 +19,7 @@
 {letter}{letter}{letter}
 
 ## 四字母，比如root.feei.cn
-#{letter}{letter}{letter}{letter}
+{letter}{letter}{letter}{letter}
 
 ## 三字母双数字，比如clx01.feei.cn
 # 1757600种组合，太多了，暂时去掉

@@ -44,7 +44,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.22'
+__version__ = '0.0.24'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -915,6 +915,9 @@ class EnumSubDomain(object):
                     self.wildcard_html = self.wildcard_html3 = ''
                     self.wildcard_html_len = self.wildcard_html3_len = 0
                     logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub, domain=self.domain, w_sub3=self.wildcard_sub3))
+                except requests.exceptions.ConnectionError:
+                    logger.error('ESD can\'t get the response text so the rsc will be skipped. ')
+                    self.skip_rsc = True
         else:
             logger.info('Not a wildcard domain')
 
