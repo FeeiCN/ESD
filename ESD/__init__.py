@@ -667,8 +667,7 @@ class EnumSubDomain(object):
                     line = line.strip('.')
                     dicts.append(line)
         dicts = list(set(dicts))
-        # root domain
-        dicts.append('@')
+
         # split dict
         if self.split is not None:
             s = self.split.split('/')
@@ -677,6 +676,9 @@ class EnumSubDomain(object):
             dicts_every = int(math.ceil(len(dicts) / dicts_count))
             dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
             logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
+
+        # root domain
+        dicts.append('@')
 
         return dicts
 
