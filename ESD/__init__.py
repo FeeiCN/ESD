@@ -280,7 +280,10 @@ class FofaEngine(object):
             self.conf.write(open("key.ini", "w"))
             return True
         else:
-            return False
+            self.fkey = self.conf.items("fofa")[0][1]
+            self.email = self.conf.items("fofa")[1][1]
+            return True
+        return False
 
     def search(self):
         result = list()
