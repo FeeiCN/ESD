@@ -295,7 +295,6 @@ class FofaEngine(object):
                 domain = urlparse.urlparse(res[0]).netloc
                 result.append(domain[:domain.find('.')])
         except Exception as e:
-            print(str(e))
             result = []
 
         return result
@@ -569,6 +568,7 @@ class EnumSubDomain(object):
                 '1.1.1.1',  # Cloudflare
                 '119.29.29.29',  # DNSPod
                 '1.2.4.8',  # sDNS
+                # '11.1.1.1'  # test DNS, not available
                 # '8.8.8.8', # Google DNS, 延时太高了
             ]
 
@@ -935,6 +935,18 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
+    def send(self, dns):
+        logger.info("Check if DNS server {dns} is available".format(dns=dns))
+        msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(4)
+        sock.sendto(msg, (dns, 53))
+        try:
+            sock.recv(4096)
+        except socket.timeout as e:
+            return False
+        return True
+
     def run(self):
         """
         Run
@@ -951,6 +963,10 @@ class EnumSubDomain(object):
         last_dns = []
         only_similarity = False
         for dns in self.dns_servers:
+            delay = self.send(dns)
+            if not delay:
+                logger.warning("@{dns} is not available, skip this DNS server")
+                continue
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
