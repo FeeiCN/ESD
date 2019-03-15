@@ -40,6 +40,7 @@ import tldextract
 import json
 import configparser
 import base64
+from tqdm import *
 from shodan import Shodan
 from shodan.cli.helpers import get_api_key
 from optparse import OptionParser
@@ -935,7 +936,7 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
-    def send(self, dns):
+    def check(self, dns):
         logger.info("Check if DNS server {dns} is available".format(dns=dns))
         msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -963,7 +964,7 @@ class EnumSubDomain(object):
         last_dns = []
         only_similarity = False
         for dns in self.dns_servers:
-            delay = self.send(dns)
+            delay = self.check(dns)
             if not delay:
                 logger.warning("@{dns} is not available, skip this DNS server")
                 continue
