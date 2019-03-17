@@ -42,7 +42,8 @@ setuptools.setup(
         'pysocks', 
         'tldextract',
         'shodan',
-        'tqdm'
+        'tqdm',
+        'colorama'
     ],
     classifiers=(
         "Topic :: Security",
