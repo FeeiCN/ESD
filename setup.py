@@ -41,7 +41,8 @@ setuptools.setup(
         'dnspython',
         'pysocks', 
         'tldextract',
-        'shodan'
+        'shodan',
+        'tqdm'
     ],
     classifiers=(
         "Topic :: Security",

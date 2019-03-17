@@ -40,6 +40,7 @@ import tldextract
 import json
 import configparser
 import base64
+from tqdm import *
 from shodan import Shodan
 from shodan.cli.helpers import get_api_key
 from optparse import OptionParser
@@ -768,6 +769,15 @@ class EnumSubDomain(object):
         for res in self.limited_concurrency_coroutines(tasks, self.coroutine_count):
             await res
 
+    async def t_start(self, tasks):
+        """
+        asyncio.as_completed expect a list of futures, not coroutine
+        :param tasks:
+        :return:
+        """
+        for f in tqdm(asyncio.as_completed(tasks), total=len(list(tasks))):
+            await f
+
     @staticmethod
     def data_clean(data):
         try:
@@ -930,7 +940,7 @@ class EnumSubDomain(object):
             domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
             domains = list(set(domains))
             tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
         except Exception as e:
             domains = []
         return domains
@@ -1016,7 +1026,7 @@ class EnumSubDomain(object):
         if not only_similarity:
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
@@ -1031,7 +1041,7 @@ class EnumSubDomain(object):
             logger.info('Collect subdomains in CA...')
             ca_subdomains = CAInfo(self.domain).get_subdomains()
             tasks = (self.query(sub) for sub in ca_subdomains)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
             logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
@@ -1042,7 +1052,7 @@ class EnumSubDomain(object):
             if len(transfer_info):
                 logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
                 tasks = (self.query(sub) for sub in transfer_info)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.t_start(tasks))
             logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
         # Use search engines to enumerate subdomains (support Baidu,Bing,Google,Yahoo)
@@ -1058,7 +1068,7 @@ class EnumSubDomain(object):
             subdomains = set(subdomains_queue)
             if len(subdomains):
                 tasks = (self.query(sub) for sub in subdomains)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.t_start(tasks))
             logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
         # Use shodan to enumerate subdomains (need key and money)
@@ -1071,7 +1081,7 @@ class EnumSubDomain(object):
             shodan_result = shodan.search()
             if len(shodan_result):
                 tasks = (self.query(sub) for sub in shodan_result)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.t_start(tasks))
             logger.info("Shodan subdomain count: {subdomains_count}".format(subdomains_count=len(shodan_result)))
 
         # Use fofa to enumerate subdomains (need key and money)
@@ -1083,7 +1093,7 @@ class EnumSubDomain(object):
             fofa_result = fofa.search()
             if len(fofa_result):
                 tasks = (self.query(sub) for sub in fofa_result)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.t_start(tasks))
             logger.info("Fofa subdomain count: {subdomains_count}".format(subdomains_count=len(fofa_result)))
 
         total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result)
@@ -1094,7 +1104,7 @@ class EnumSubDomain(object):
             dnsquery = DNSQuery(self.domain, total_subs, self.domain)
             record_info = dnsquery.dns_query()
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
             logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
 
         if self.is_wildcard_domain and not self.skip_rsc:
@@ -1106,7 +1116,7 @@ class EnumSubDomain(object):
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
             tasks = (self.similarity(sub) for sub in self.wildcard_subs)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
 
             # Distinct last domains use RSC
             # Maybe misinformation
@@ -1118,7 +1128,7 @@ class EnumSubDomain(object):
         while len(self.domains_rs) != 0:
             logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
             tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.t_start(tasks))
 
         # write output
         tmp_dir = '/tmp/esd'
