@@ -40,7 +40,10 @@ setuptools.setup(
         'backoff',
         'dnspython',
         'pysocks', 
-        'tldextract'
+        'tldextract',
+        'shodan',
+        'tqdm',
+        'colorama'
     ],
     classifiers=(
         "Topic :: Security",
@@ -49,7 +52,7 @@ setuptools.setup(
     ),
     include_package_data=True,
     package_data={
-        '': ['*.esd','*.pem']
+        '': ['*.esd','*.pem','*.ini']
     },
     entry_points={
         'console_scripts': [
