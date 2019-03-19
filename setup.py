@@ -43,7 +43,8 @@ setuptools.setup(
         'tldextract',
         'shodan',
         'tqdm',
-        'colorama'
+        'colorama',
+        'censys'
     ],
     classifiers=(
         "Topic :: Security",
