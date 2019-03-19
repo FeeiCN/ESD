@@ -323,7 +323,7 @@ class ZoomeyeEngine():
             password = self.conf.items("zoomeye")[1][1]
             if username != '' and password != '':
                 self.zoomeye_struct['username'] = username
-                self.zoomeye_struct['username'] = password
+                self.zoomeye_struct['password'] = password
                 resp = requests.Session().post(url='https://api.zoomeye.org/user/login', data=json.dumps(self.zoomeye_struct))
                 resp_json = json.loads(resp.text)
             else:
