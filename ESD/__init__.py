@@ -242,11 +242,13 @@ class ShodanEngine(object):
             self.conf.set("shodan", "shodan_key", self.skey)
             self.conf.write(open("key.ini", "w"))
             self.api = Shodan(get_api_key())
-        elif get_api_key() != '':
-            self.api = Shodan(get_api_key())
         else:
-            logger.warning('The shodan api is empty so you can not use shodan api.')
-            return False
+            from click.exceptions import ClickException
+            try:
+                self.api = Shodan(get_api_key())
+            except ClickException as e:
+                logger.warning('The shodan api is empty so you can not use shodan api.')
+                return False
         return True
 
     def search(self):
