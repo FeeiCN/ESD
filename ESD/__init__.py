@@ -254,7 +254,7 @@ class ShodanEngine(object):
         result = self.api.search('hostname:{domain}'.format(domain=self.domain))
         for service in result['matches']:
             domain = service['hostnames'][0]
-            subs.append(domain[:domain.find('.')])
+            subs.append(domain.rsplit(self.domain, 1)[0].strip('.'))
         return set(subs)
 
 
@@ -294,7 +294,7 @@ class FofaEngine(object):
             json_resp = json.loads(resp.text)
             for res in json_resp['results']:
                 domain = urlparse.urlparse(res[0]).netloc
-                result.append(domain[:domain.find('.')])
+                result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
         except Exception as e:
             result = []
 
@@ -363,9 +363,53 @@ class ZoomeyeEngine():
                 match_list = response["matches"]
                 for block in match_list:
                     domain = block['site']
-                    result.append(domain[:domain.find('.')])
+                    result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
                 num = num + 1
         return result
+
+
+# censys的接口有点不稳定，经常出现timeout的情况
+class CensysEngine():
+    def __init__(self, domain, censys_struct, conf):
+        self.domain = domain
+        self.conf = conf
+        self.censys_struct = censys_struct
+        self.certificates = None
+        self.fields = ['parsed.subject_dn']
+
+    def initialize(self):
+        uid = self.censys_struct['uid']
+        secret = self.censys_struct['secret']
+        if uid != '' and secret != '':
+            self.certificates = censys.certificates.CensysCertificates(uid, secret)
+        else:
+            uid = self.conf.items("censys")[0][1]
+            secret = self.conf.items("censys")[1][1]
+            if uid != '' and secret != '':
+                self.certificates = censys.certificates.CensysCertificates(uid, secret)
+            else:
+                return False
+
+        self.conf.set("censys", "UID", uid)
+        self.conf.set("censys", "SECRET", secret)
+        self.conf.write(open("key.ini", "w"))
+
+        return True
+
+    def search(self):
+        result = list()
+        try:
+            for c in self.certificates.search(self.domain, fields=self.fields):
+                subject = c['parsed.subject_dn'].strip()
+                reg_domain = self.domain.replace('.', '[.]')
+                reg_text = r'(([-a-zA-Z0-9]+[.])*{reg_domain}$)'.format(reg_domain=reg_domain)
+                match_list = re.findall(reg_text, subject)
+                if match_list:
+                    domain = match_list[0][0]
+                    result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
+        except censys.base.CensysException as e:
+            logger.warning(str(e))
+            return result
 
 
 class EngineBase(multiprocessing.Process):
@@ -448,7 +492,7 @@ class EngineBase(multiprocessing.Process):
     def run(self):
         domain_list = self.enumerate()
         for domain in domain_list:
-            self.q.append(domain[:domain.find('.')])
+            self.q.append(domain.rsplit(self.domain, 1)[0].strip('.'))
 
 
 class Google(EngineBase):
@@ -610,7 +654,7 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, shodan_key=None, fofa={}, zoomeye={}):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, shodan_key=None, fofa={}, zoomeye={}, censys={}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -629,6 +673,7 @@ class EnumSubDomain(object):
         self.fofa_struct = fofa
         self.conf = configparser.ConfigParser()
         self.zoomeye_struct = zoomeye
+        self.censys_struct = censys
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -1185,7 +1230,18 @@ class EnumSubDomain(object):
                 self.loop.run_until_complete(self.start(tasks, len(zoomeye_result)))
             logger.info("Zoomeye subdomain count: {subdomains_count}".format(subdomains_count=len(zoomeye_result)))
 
-        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result)
+        censys_result = []
+        censys = CensysEngine(self.domain, self.censys_struct, self.conf)
+        is_success = censys.initialize()
+        if is_success:
+            logger.info("Enumerating subdomains with Censys")
+            censys_result = censys.search()
+            if len(censys_result):
+                tasks = (self.query(sub) for sub in censys_result)
+                self.loop.run_until_complete(self.start(tasks, len(censys_result)))
+            logger.info("Censys subdomain count: {subdomains_count}".format(subdomains_count=len(censys_result)))
+
+        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
@@ -1283,6 +1339,8 @@ def main():
     parser.add_option('--femail', '--fofa-email', dest='fofaemail', help='The email of your fofa account')
     parser.add_option('--zusername', '--zoomeye-username', dest='zoomeyeusername', help='The username of your zoomeye account')
     parser.add_option('--zpassword', '--zoomeye-password', dest='zoomeyepassword', help='The password of your zoomeye account')
+    parser.add_option('--cuid', '--censys-uid', dest='censysuid', help="The uid of your censys account")
+    parser.add_option('--csecret', '--censys-secret', dest='censyssecret', help='The secret of your censys account')
     (options, args) = parser.parse_args()
 
     support_engines = {
@@ -1312,6 +1370,11 @@ def main():
     zoomeye_struct = {
         'username': options.zoomeyeusername,
         'password': options.zoomeyepassword,
+    }
+
+    censys_struct = {
+        'uid': options.censysuid,
+        'secret': options.censyssecret,
     }
 
     try:
@@ -1368,7 +1431,7 @@ def main():
     try:
         for d in domains:
             esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info,
-                                multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct)
+                                multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
             esd.run()
     except KeyboardInterrupt:
         logger.info('Bye :)')
