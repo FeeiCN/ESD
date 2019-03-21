@@ -245,7 +245,11 @@ class ShodanEngine(object):
         else:
             from click.exceptions import ClickException
             try:
-                self.api = Shodan(get_api_key())
+                key = None if get_api_key() == '' else get_api_key()
+                if key:
+                    self.api = Shodan(key)
+                else:
+                    return False
             except ClickException as e:
                 logger.warning('The shodan api is empty so you can not use shodan api.')
                 return False
@@ -285,7 +289,8 @@ class FofaEngine(object):
         else:
             self.fkey = self.conf.items("fofa")[0][1]
             self.email = self.conf.items("fofa")[1][1]
-            return True
+            if self.fkey and self.email:
+                return True
         return False
 
     def search(self):
@@ -382,19 +387,22 @@ class CensysEngine():
     def initialize(self):
         uid = self.censys_struct['uid']
         secret = self.censys_struct['secret']
-        if uid != '' and secret != '':
-            self.certificates = censys.certificates.CensysCertificates(uid, secret)
-        else:
-            uid = self.conf.items("censys")[0][1]
-            secret = self.conf.items("censys")[1][1]
-            if uid != '' and secret != '':
+        try:
+            if uid is not None and secret is not None:
                 self.certificates = censys.certificates.CensysCertificates(uid, secret)
             else:
-                return False
+                uid = self.conf.items("censys")[0][1]
+                secret = self.conf.items("censys")[1][1]
+                if uid != '' and secret != '':
+                    self.certificates = censys.certificates.CensysCertificates(uid, secret)
+                else:
+                    return False
 
-        self.conf.set("censys", "UID", uid)
-        self.conf.set("censys", "SECRET", secret)
-        self.conf.write(open("key.ini", "w"))
+            self.conf.set("censys", "UID", uid)
+            self.conf.set("censys", "SECRET", secret)
+            self.conf.write(open("key.ini", "w"))
+        except Exception as e:
+            return False
 
         return True
 
@@ -409,8 +417,10 @@ class CensysEngine():
                 if match_list:
                     domain = match_list[0][0]
                     result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
-        except censys.base.CensysException as e:
+        except Exception as e:
             logger.warning(str(e))
+            return result
+        else:
             return result
 
 
@@ -1264,7 +1274,7 @@ class EnumSubDomain(object):
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
             tasks = (self.similarity(sub) for sub in self.wildcard_subs)
-            self.loop.run_until_complete(self.start(tasks, len(self.wildcard_sub)))
+            self.loop.run_until_complete(self.start(tasks, len(self.wildcard_subs)))
 
             # Distinct last domains use RSC
             # Maybe misinformation
