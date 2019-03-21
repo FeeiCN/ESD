@@ -232,7 +232,7 @@ class ShodanEngine(object):
         self.api = None
 
     # 初始化shodan的api
-    def initialize(self):
+    def initialize(self, base_dir):
         if self.skey:
             logger.info('Initializing the shodan api.')
             result = os.system('shodan init {skey}'.format(skey=self.skey))
@@ -240,7 +240,7 @@ class ShodanEngine(object):
                 logger.warning('Initializ failed, please check your key.')
                 return False
             self.conf.set("shodan", "shodan_key", self.skey)
-            self.conf.write(open("key.ini", "w"))
+            self.conf.write(open(base_dir + "/key.ini", "w"))
             self.api = Shodan(get_api_key())
         else:
             from click.exceptions import ClickException
@@ -280,11 +280,11 @@ class FofaEngine(object):
         self.timeout = 30
         self.conf = conf
 
-    def initialize(self):
+    def initialize(self, base_dir):
         if self.fkey is not None and self.email is not None:
             self.conf.set("fofa", "fofa_key", self.fkey)
             self.conf.set("fofa", "fofa_email", self.email)
-            self.conf.write(open("key.ini", "w"))
+            self.conf.write(open(base_dir + "/key.ini", "w"))
             return True
         else:
             self.fkey = self.conf.items("fofa")[0][1]
@@ -319,7 +319,7 @@ class ZoomeyeEngine():
         self.zoomeye_struct = zoomeye_struct
         self.conf = conf
 
-    def initialize(self):
+    def initialize(self, base_dir):
         username = self.zoomeye_struct['username']
         password = self.zoomeye_struct['password']
         if username != '' and password != '':
@@ -340,7 +340,7 @@ class ZoomeyeEngine():
             return False
         self.conf.set("zoomeye", "zoomeye_username", username)
         self.conf.set("zoomeye", "zoomeye_password", password)
-        self.conf.write(open("key.ini", "w"))
+        self.conf.write(open(base_dir + "/key.ini", "w"))
         self.headers['Authorization'] = "JWT {token}".format(token=resp_json['access_token'])
 
         return True
@@ -384,7 +384,7 @@ class CensysEngine():
         self.certificates = None
         self.fields = ['parsed.subject_dn']
 
-    def initialize(self):
+    def initialize(self, base_dir):
         uid = self.censys_struct['uid']
         secret = self.censys_struct['secret']
         try:
@@ -400,7 +400,7 @@ class CensysEngine():
 
             self.conf.set("censys", "UID", uid)
             self.conf.set("censys", "SECRET", secret)
-            self.conf.write(open("key.ini", "w"))
+            self.conf.write(open(base_dir + "/key.ini", "w"))
         except Exception as e:
             return False
 
@@ -1161,6 +1161,7 @@ class EnumSubDomain(object):
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
             self.loop.run_until_complete(self.start(tasks, len(subs)))
+            logger.info("Brute Force subdomain count: {total}".format(total=len(subs)))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
@@ -1207,9 +1208,10 @@ class EnumSubDomain(object):
 
         # Use shodan to enumerate subdomains (need key and money)
         shodan_result = []
-        self.conf.read("key.ini")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.conf.read(base_dir + "/key.ini")
         shodan = ShodanEngine(self.skey, self.conf, self.domain)
-        is_success = shodan.initialize()
+        is_success = shodan.initialize(base_dir)
         if is_success:
             logger.info('Enumerating subdomains with Shodan')
             shodan_result = shodan.search()
@@ -1221,7 +1223,7 @@ class EnumSubDomain(object):
         # Use fofa to enumerate subdomains (need key and money)
         fofa_result = []
         fofa = FofaEngine(self.fofa_struct, self.conf, self.domain)
-        is_success = fofa.initialize()
+        is_success = fofa.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Fofa")
             fofa_result = fofa.search()
@@ -1233,7 +1235,7 @@ class EnumSubDomain(object):
         # Use zoomeye to enumerate subdomains (need account or money)
         zoomeye_result = []
         zoomeye = ZoomeyeEngine(self.domain, self.zoomeye_struct, self.conf)
-        is_success = zoomeye.initialize()
+        is_success = zoomeye.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Zoomeye")
             zoomeye_result = zoomeye.enumerate()
@@ -1244,7 +1246,7 @@ class EnumSubDomain(object):
 
         censys_result = []
         censys = CensysEngine(self.domain, self.censys_struct, self.conf)
-        is_success = censys.initialize()
+        is_success = censys.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Censys")
             censys_result = censys.search()
