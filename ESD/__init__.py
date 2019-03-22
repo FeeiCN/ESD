@@ -1062,15 +1062,25 @@ class EnumSubDomain(object):
         return domains
 
     def check(self, dns):
-        logger.info("Check if DNS server {dns} is available".format(dns=dns))
+        logger.info("Checking if DNS server {dns} is available".format(dns=dns))
         msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(4)
-        sock.sendto(msg, (dns, 53))
-        try:
-            sock.recv(4096)
-        except socket.timeout as e:
-            return False
+        sock.settimeout(3)
+        repeat = {
+            1: 'first',
+            2: 'second',
+            3: 'third'
+        }
+        for i in range(3):
+            logger.info("Sending message to DNS server a {times} time".format(times=repeat[i+1]))
+            sock.sendto(msg, (dns, 53))
+            try:
+                sock.recv(4096)
+                break
+            except socket.timeout as e:
+                logger.warning('Failed!')
+            if i == 2:
+                return False
         return True
 
     def run(self):
