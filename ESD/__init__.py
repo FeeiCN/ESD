@@ -37,6 +37,14 @@ import dns.resolver
 import multiprocessing
 import threading
 import tldextract
+import json
+import configparser
+import base64
+from tqdm import *
+from colorama import Fore
+from shodan import Shodan
+import censys.certificates
+from shodan.cli.helpers import get_api_key
 from optparse import OptionParser
 import urllib.parse as urlparse
 from collections import Counter
@@ -44,7 +52,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.22'
+__version__ = '0.0.24'
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -73,6 +81,7 @@ ssl.match_hostname = lambda cert, hostname: True
 
 
 # 只采用了递归，速度非常慢，在优化完成前不建议开启
+# TODO:优化DNS查询，递归太慢了
 class DNSQuery(object):
     def __init__(self, root_domain, subs, suffix):
         # root domain
@@ -214,6 +223,207 @@ class CAInfo(object):
         return subs
 
 
+# 使用shodan接口进行枚举，但经测试并不能增加多少成果
+class ShodanEngine(object):
+    def __init__(self, skey, conf, domain):
+        self.domain = domain
+        self.conf = conf
+        self.skey = skey
+        self.api = None
+
+    # 初始化shodan的api
+    def initialize(self, base_dir):
+        if self.skey:
+            logger.info('Initializing the shodan api.')
+            result = os.system('shodan init {skey}'.format(skey=self.skey))
+            if result:
+                logger.warning('Initializ failed, please check your key.')
+                return False
+            self.conf.set("shodan", "shodan_key", self.skey)
+            self.conf.write(open(base_dir + "/key.ini", "w"))
+            self.api = Shodan(get_api_key())
+        else:
+            from click.exceptions import ClickException
+            try:
+                key = None if get_api_key() == '' else get_api_key()
+                if key:
+                    self.api = Shodan(key)
+                else:
+                    return False
+            except ClickException as e:
+                logger.warning('The shodan api is empty so you can not use shodan api.')
+                return False
+        return True
+
+    def search(self):
+        subs = list()
+        result = self.api.search('hostname:{domain}'.format(domain=self.domain))
+        for service in result['matches']:
+            domain = service['hostnames'][0]
+            subs.append(domain.rsplit(self.domain, 1)[0].strip('.'))
+        return set(subs)
+
+
+# fofa的sdk不支持python3，就只能调用restful api了，但是挖掘成果比shodan多
+class FofaEngine(object):
+    def __init__(self, fofa_struct, conf, domain):
+        self.base_url = "https://fofa.so/api/v1/search/all?email={email}&key={key}&qbase64={domain}"
+        self.email = fofa_struct['femail']
+        self.fkey = fofa_struct['fkey']
+        self.domain = base64.b64encode(domain.encode('utf-8')).decode('utf-8')
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.8',
+            'Accept-Encoding': 'gzip',
+        }
+        self.timeout = 30
+        self.conf = conf
+
+    def initialize(self, base_dir):
+        if self.fkey is not None and self.email is not None:
+            self.conf.set("fofa", "fofa_key", self.fkey)
+            self.conf.set("fofa", "fofa_email", self.email)
+            self.conf.write(open(base_dir + "/key.ini", "w"))
+            return True
+        else:
+            self.fkey = self.conf.items("fofa")[0][1]
+            self.email = self.conf.items("fofa")[1][1]
+            if self.fkey and self.email:
+                return True
+        return False
+
+    def search(self):
+        result = list()
+        url = self.base_url.format(email=self.email, key=self.fkey, domain=self.domain)
+        try:
+            resp = requests.Session().get(url, headers=self.headers, timeout=self.timeout)
+            json_resp = json.loads(resp.text)
+            for res in json_resp['results']:
+                domain = urlparse.urlparse(res[0]).netloc
+                result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
+        except Exception as e:
+            result = []
+
+        return result
+
+
+# Zoomeye的效果还可以，但是比fofa还贵
+class ZoomeyeEngine(object):
+    def __init__(self, domain, zoomeye_struct, conf):
+        self.headers = {
+            "Authorization": "JWT {token}"
+        }
+        self.url = 'https://api.zoomeye.org/web/search?query=site:{domain}&page={num}'
+        self.domain = domain
+        self.zoomeye_struct = zoomeye_struct
+        self.conf = conf
+
+    def initialize(self, base_dir):
+        username = self.zoomeye_struct['username']
+        password = self.zoomeye_struct['password']
+        if username != '' and password != '':
+            resp = requests.Session().post(url='https://api.zoomeye.org/user/login', data=json.dumps(self.zoomeye_struct))
+            resp_json = json.loads(resp.text)
+        else:
+            username = self.conf.items("zoomeye")[0][1]
+            password = self.conf.items("zoomeye")[1][1]
+            if username != '' and password != '':
+                self.zoomeye_struct['username'] = username
+                self.zoomeye_struct['password'] = password
+                resp = requests.Session().post(url='https://api.zoomeye.org/user/login', data=json.dumps(self.zoomeye_struct))
+                resp_json = json.loads(resp.text)
+            else:
+                return False
+        if 'error' in resp_json.keys():
+            # logger.warning('In Zoomeye' + resp_json['message'])
+            return False
+        self.conf.set("zoomeye", "zoomeye_username", username)
+        self.conf.set("zoomeye", "zoomeye_password", password)
+        self.conf.write(open(base_dir + "/key.ini", "w"))
+        self.headers['Authorization'] = "JWT {token}".format(token=resp_json['access_token'])
+
+        return True
+
+    def search(self, num):
+        url = self.url.format(domain=self.domain, num=num)
+        resp = requests.Session().get(url=url, headers=self.headers)
+
+        try:
+            # zoomeye对于频繁的api调用会做限制，但是降低频率又会影响效率
+            response = json.loads(resp.text)
+        except Exception:
+            response = None
+
+        return response
+
+    def enumerate(self):
+        flag = True
+        num = 1
+        result = list()
+        while flag:
+            response = self.search(num)
+            if response is None or 'error' in response.keys():
+                # print(response)
+                flag = False
+            else:
+                match_list = response["matches"]
+                for block in match_list:
+                    domain = block['site']
+                    result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
+                num = num + 1
+        return result
+
+
+# censys的接口有点不稳定，经常出现timeout的情况
+class CensysEngine(object):
+    def __init__(self, domain, censys_struct, conf):
+        self.domain = domain
+        self.conf = conf
+        self.censys_struct = censys_struct
+        self.certificates = None
+        self.fields = ['parsed.subject_dn']
+
+    def initialize(self, base_dir):
+        uid = self.censys_struct['uid']
+        secret = self.censys_struct['secret']
+        try:
+            if uid is not None and secret is not None:
+                self.certificates = censys.certificates.CensysCertificates(uid, secret)
+            else:
+                uid = self.conf.items("censys")[0][1]
+                secret = self.conf.items("censys")[1][1]
+                if uid != '' and secret != '':
+                    self.certificates = censys.certificates.CensysCertificates(uid, secret)
+                else:
+                    return False
+
+            self.conf.set("censys", "UID", uid)
+            self.conf.set("censys", "SECRET", secret)
+            self.conf.write(open(base_dir + "/key.ini", "w"))
+        except Exception as e:
+            return False
+
+        return True
+
+    def search(self):
+        result = list()
+        try:
+            for c in self.certificates.search(self.domain, fields=self.fields):
+                subject = c['parsed.subject_dn'].strip()
+                reg_domain = self.domain.replace('.', '[.]')
+                reg_text = r'(([-a-zA-Z0-9]+[.])*{reg_domain}$)'.format(reg_domain=reg_domain)
+                match_list = re.findall(reg_text, subject)
+                if match_list:
+                    domain = match_list[0][0]
+                    result.append(domain.rsplit(self.domain, 1)[0].strip('.'))
+        except Exception as e:
+            logger.warning(str(e))
+            return result
+        else:
+            return result
+
+
 class EngineBase(multiprocessing.Process):
     def __init__(self, base_url, domain, q, verbose, proxy):
         multiprocessing.Process.__init__(self)
@@ -294,7 +504,7 @@ class EngineBase(multiprocessing.Process):
     def run(self):
         domain_list = self.enumerate()
         for domain in domain_list:
-            self.q.append(domain[:domain.find('.')])
+            self.q.append(domain.rsplit(self.domain, 1)[0].strip('.'))
 
 
 class Google(EngineBase):
@@ -456,7 +666,7 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, shodan_key=None, fofa={}, zoomeye={}, censys={}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -471,6 +681,11 @@ class EnumSubDomain(object):
         self.transfer = transfer
         self.cainfo = cainfo
         self.multiresolve = multiresolve
+        self.skey = shodan_key
+        self.fofa_struct = fofa
+        self.conf = configparser.ConfigParser()
+        self.zoomeye_struct = zoomeye
+        self.censys_struct = censys
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -479,6 +694,7 @@ class EnumSubDomain(object):
                 '1.1.1.1',  # Cloudflare
                 '119.29.29.29',  # DNSPod
                 '1.2.4.8',  # sDNS
+                # '11.1.1.1'  # test DNS, not available
                 # '8.8.8.8', # Google DNS, 延时太高了
             ]
 
@@ -585,8 +801,7 @@ class EnumSubDomain(object):
                     line = line.strip('.')
                     dicts.append(line)
         dicts = list(set(dicts))
-        # root domain
-        dicts.append('@')
+
         # split dict
         if self.split is not None:
             s = self.split.split('/')
@@ -595,6 +810,9 @@ class EnumSubDomain(object):
             dicts_every = int(math.ceil(len(dicts) / dicts_count))
             dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
             logger.info('Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
+
+        # root domain
+        dicts.append('@')
 
         return dicts
 
@@ -640,6 +858,7 @@ class EnumSubDomain(object):
             else:
                 if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
+                    print('\n')
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
         return sub_domain, ret
@@ -667,13 +886,13 @@ class EnumSubDomain(object):
         while len(futures) > 0:
             yield first_to_finish()
 
-    async def start(self, tasks):
+    async def start(self, tasks, tasks_num):
         """
         Limit the number of coroutines for reduce memory footprint
         :param tasks:
         :return:
         """
-        for res in self.limited_concurrency_coroutines(tasks, self.coroutine_count):
+        for res in tqdm(self.limited_concurrency_coroutines(tasks, self.coroutine_count), bar_format="%s{l_bar}%s{bar}%s{r_bar}%s" % (Fore.YELLOW, Fore.YELLOW, Fore.YELLOW, Fore.RESET), total=tasks_num):
             await res
 
     @staticmethod
@@ -755,14 +974,20 @@ class EnumSubDomain(object):
                             if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
+
+                                    print('\n')
+
                                     logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
                                     self.domains_rs.append(location)
                                     self.domains_rs_processed.append(location)
                             else:
+                                print('\n')
                                 logger.info('not same domain: {l}'.format(l=location))
                     else:
+                        print('\n')
                         logger.info('not domain(maybe path): {l}'.format(l=location))
                 if html is None:
+                    print('\n')
                     logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
                     return
                 # collect response html's domains
@@ -774,6 +999,7 @@ class EnumSubDomain(object):
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
+                            print('\n')
                             logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd, l=len(self.domains_rs)))
                             self.domains_rs.append(rd)
                             self.domains_rs_processed.append(rd)
@@ -808,8 +1034,8 @@ class EnumSubDomain(object):
                         self.data[sub_domain] = self.wildcard_ips
                     else:
                         self.data[sub_domain] = self.wildcard_ips
-                    logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    print('\n')
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -838,12 +1064,35 @@ class EnumSubDomain(object):
             domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
             domains = list(set(domains))
             tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.start(tasks, len(domains)))
         except Exception as e:
             domains = []
         return domains
 
-    @property
+
+    def check(self, dns):
+        logger.info("Checking if DNS server {dns} is available".format(dns=dns))
+        msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(3)
+        repeat = {
+            1: 'first',
+            2: 'second',
+            3: 'third'
+        }
+        for i in range(3):
+            logger.info("Sending message to DNS server a {times} time".format(times=repeat[i+1]))
+            sock.sendto(msg, (dns, 53))
+            try:
+                sock.recv(4096)
+                break
+            except socket.timeout as e:
+                logger.warning('Failed!')
+            if i == 2:
+                return False
+        return True
+
+
     def run(self):
         """
         Run
@@ -860,6 +1109,10 @@ class EnumSubDomain(object):
         last_dns = []
         only_similarity = False
         for dns in self.dns_servers:
+            delay = self.check(dns)
+            if not delay:
+                logger.warning("@{dns} is not available, skip this DNS server".format(dns=dns))
+                continue
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
@@ -915,14 +1168,20 @@ class EnumSubDomain(object):
                 except requests.exceptions.ReadTimeout:
                     self.wildcard_html = self.wildcard_html3 = ''
                     self.wildcard_html_len = self.wildcard_html3_len = 0
-                    logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub, domain=self.domain, w_sub3=self.wildcard_sub3))
+                    logger.warning('Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(w_sub=self.wildcard_sub,
+                                                                                                                                                                             domain=self.domain,
+                                                                                                                                                                             w_sub3=self.wildcard_sub3))
+                except requests.exceptions.ConnectionError:
+                    logger.error('ESD can\'t get the response text so the rsc will be skipped. ')
+                    self.skip_rsc = True
         else:
             logger.info('Not a wildcard domain')
 
         if not only_similarity:
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.start(tasks, len(subs)))
+            logger.info("Brute Force subdomain count: {total}".format(total=len(subs)))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
@@ -936,8 +1195,9 @@ class EnumSubDomain(object):
         if self.cainfo:
             logger.info('Collect subdomains in CA...')
             ca_subdomains = CAInfo(self.domain).get_subdomains()
-            tasks = (self.query(sub) for sub in ca_subdomains)
-            self.loop.run_until_complete(self.start(tasks))
+            if len(ca_subdomains):
+                tasks = (self.query(sub) for sub in ca_subdomains)
+                self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
             logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
@@ -948,7 +1208,7 @@ class EnumSubDomain(object):
             if len(transfer_info):
                 logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
                 tasks = (self.query(sub) for sub in transfer_info)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
             logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
         # Use search engines to enumerate subdomains (support Baidu,Bing,Google,Yahoo)
@@ -964,17 +1224,67 @@ class EnumSubDomain(object):
             subdomains = set(subdomains_queue)
             if len(subdomains):
                 tasks = (self.query(sub) for sub in subdomains)
-                self.loop.run_until_complete(self.start(tasks))
+                self.loop.run_until_complete(self.start(tasks, len(subdomains)))
             logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
-        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
-        # use TXT,SOA,MX,AAAA record to find sub domains
+        # Use shodan to enumerate subdomains (need key and money)
+        shodan_result = []
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.conf.read(base_dir + "/key.ini")
+        shodan = ShodanEngine(self.skey, self.conf, self.domain)
+        is_success = shodan.initialize(base_dir)
+        if is_success:
+            logger.info('Enumerating subdomains with Shodan')
+            shodan_result = shodan.search()
+            if len(shodan_result):
+                tasks = (self.query(sub) for sub in shodan_result)
+                self.loop.run_until_complete(self.start(tasks, len(shodan_result)))
+            logger.info("Shodan subdomain count: {subdomains_count}".format(subdomains_count=len(shodan_result)))
+
+        # Use fofa to enumerate subdomains (need key and money)
+        fofa_result = []
+        fofa = FofaEngine(self.fofa_struct, self.conf, self.domain)
+        is_success = fofa.initialize(base_dir)
+        if is_success:
+            logger.info("Enumerating subdomains with Fofa")
+            fofa_result = fofa.search()
+            if len(fofa_result):
+                tasks = (self.query(sub) for sub in fofa_result)
+                self.loop.run_until_complete(self.start(tasks, len(fofa_result)))
+            logger.info("Fofa subdomain count: {subdomains_count}".format(subdomains_count=len(fofa_result)))
+
+        # Use zoomeye to enumerate subdomains (need account or money)
+        zoomeye_result = []
+        zoomeye = ZoomeyeEngine(self.domain, self.zoomeye_struct, self.conf)
+        is_success = zoomeye.initialize(base_dir)
+        if is_success:
+            logger.info("Enumerating subdomains with Zoomeye")
+            zoomeye_result = zoomeye.enumerate()
+            if len(zoomeye_result):
+                tasks = (self.query(sub) for sub in zoomeye_result)
+                self.loop.run_until_complete(self.start(tasks, len(zoomeye_result)))
+            logger.info("Zoomeye subdomain count: {subdomains_count}".format(subdomains_count=len(zoomeye_result)))
+
+        censys_result = []
+        censys = CensysEngine(self.domain, self.censys_struct, self.conf)
+        is_success = censys.initialize(base_dir)
+        if is_success:
+            logger.info("Enumerating subdomains with Censys")
+            censys_result = censys.search()
+            if len(censys_result):
+                tasks = (self.query(sub) for sub in censys_result)
+                self.loop.run_until_complete(self.start(tasks, len(censys_result)))
+            logger.info("Censys subdomain count: {subdomains_count}".format(subdomains_count=len(censys_result)))
+
+        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result)
+
+        # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
             logger.info('Enumerating subdomains with TXT, SOA, MX, AAAA record...')
             dnsquery = DNSQuery(self.domain, total_subs, self.domain)
             record_info = dnsquery.dns_query()
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.start(tasks, len(record_info)))
             logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
 
         if self.is_wildcard_domain and not self.skip_rsc:
@@ -982,11 +1292,12 @@ class EnumSubDomain(object):
             total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
-            logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data), len_remain=len(self.wildcard_subs)))
+            logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data),
+                                                                                                                                                          len_remain=len(self.wildcard_subs)))
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
             tasks = (self.similarity(sub) for sub in self.wildcard_subs)
-            self.loop.run_until_complete(self.start(tasks))
+            self.loop.run_until_complete(self.start(tasks, len(self.wildcard_subs)))
 
             # Distinct last domains use RSC
             # Maybe misinformation
@@ -998,7 +1309,9 @@ class EnumSubDomain(object):
         while len(self.domains_rs) != 0:
             logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
             tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
-            self.loop.run_until_complete(self.start(tasks))
+
+            self.loop.run_until_complete(self.start(tasks, len(self.domains_rs)))
+
 
         # write output
         tmp_dir = '/tmp/esd'
@@ -1058,6 +1371,13 @@ def main():
     parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
     parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
     parser.add_option('-m', '--multi-resolve', dest='multiresolve', help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
+    parser.add_option('--skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
+    parser.add_option('--fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
+    parser.add_option('--femail', '--fofa-email', dest='fofaemail', help='The email of your fofa account')
+    parser.add_option('--zusername', '--zoomeye-username', dest='zoomeyeusername', help='The username of your zoomeye account')
+    parser.add_option('--zpassword', '--zoomeye-password', dest='zoomeyepassword', help='The password of your zoomeye account')
+    parser.add_option('--cuid', '--censys-uid', dest='censysuid', help="The uid of your censys account")
+    parser.add_option('--csecret', '--censys-secret', dest='censyssecret', help='The secret of your censys account')
     (options, args) = parser.parse_args()
 
     support_engines = {
@@ -1072,19 +1392,35 @@ def main():
     response_filter = options.filter
     skip_rsc = options.skiprsc
     split_list = options.split.split('/')
+    split = options.split
     brute = options.nobrute
     dns_transfer = options.transfer
     ca_info = options.cainfo
     multiresolve = options.multiresolve
+    skey = options.shodankey
+
+    fofa_struct = {
+        'fkey': options.fofakey,
+        'femail': options.fofaemail,
+    }
+
+    zoomeye_struct = {
+        'username': options.zoomeyeusername,
+        'password': options.zoomeyepassword,
+    }
+
+    censys_struct = {
+        'uid': options.censysuid,
+        'secret': options.censyssecret,
+    }
 
     try:
         if len(split_list) != 2 or int(split_list[0]) > int(split_list[1]):
             logger.error('Invaild split parameter,can not split the dict')
+            split = None
     except:
         logger.error('Split validation failed: {d}'.format(d=split_list))
         exit(0)
-    else:
-        split = None
 
     if options.proxy:
         proxy = {
@@ -1099,7 +1435,8 @@ def main():
             if engine.lower() in support_engines:
                 engines.append(support_engines[engine])
     else:
-        engines = [Baidu,Google,Bing,Yahoo]
+        engines = [Baidu, Google, Bing, Yahoo]
+
 
     if options.domains is not None:
         for p in options.domains.split(','):
@@ -1131,9 +1468,11 @@ def main():
     logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info, multiresolve=multiresolve)
-            esd.run
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info,
+                                multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
+            esd.run()
     except KeyboardInterrupt:
+        print('\n')
         logger.info('Bye :)')
         exit(0)
 

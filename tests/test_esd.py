@@ -3,7 +3,7 @@ from ESD import EnumSubDomain
 from ESD import DNSQuery
 from difflib import SequenceMatcher
 
-def test_load_sub_domain_dict():
+'''def test_load_sub_domain_dict():
     esd = EnumSubDomain('feei.cn')
     assert 'www' in esd.load_sub_domain_dict()
 
@@ -99,11 +99,15 @@ subs = ['planet.python.org', 'dinsdale.python.org', 'wiki', 'discuss.python.org'
 
 def test_dns_query():
     before = time.time()
-    enum = DNSQuery(root_domain, subs)
+    enum = DNSQuery(root_domain,subs, root_domain)
     res = enum.dns_query()
     now = time.time()
     print(now - before)
     print(res)
 
 
-test_dns_query()
+
+test_dns_query()'''
+domain_fuzz = EnumSubDomain('ivte.feei.cn',debug=True)
+a = domain_fuzz.run()
+
