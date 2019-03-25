@@ -974,7 +974,6 @@ class EnumSubDomain(object):
                             if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
-
                                     print('\n')
 
                                     logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
@@ -1069,7 +1068,6 @@ class EnumSubDomain(object):
             domains = []
         return domains
 
-
     def check(self, dns):
         logger.info("Checking if DNS server {dns} is available".format(dns=dns))
         msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
@@ -1081,7 +1079,7 @@ class EnumSubDomain(object):
             3: 'third'
         }
         for i in range(3):
-            logger.info("Sending message to DNS server a {times} time".format(times=repeat[i+1]))
+            logger.info("Sending message to DNS server a {times} time".format(times=repeat[i + 1]))
             sock.sendto(msg, (dns, 53))
             try:
                 sock.recv(4096)
@@ -1091,7 +1089,6 @@ class EnumSubDomain(object):
             if i == 2:
                 return False
         return True
-
 
     def run(self):
         """
@@ -1312,7 +1309,6 @@ class EnumSubDomain(object):
 
             self.loop.run_until_complete(self.start(tasks, len(self.domains_rs)))
 
-
         # write output
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
@@ -1337,13 +1333,13 @@ class EnumSubDomain(object):
                 op.write(con)
                 opt.write(con)
 
-
         logger.info('Output: {op}'.format(op=output_path))
         logger.info('Output with time: {op}'.format(op=output_path_with_time))
         logger.info('Total domain: {td}'.format(td=len(self.data)))
         time_consume = int(time.time() - start_time)
         logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
         return self.data
+
 
 def banner():
     print("""\033[94m
@@ -1436,7 +1432,6 @@ def main():
                 engines.append(support_engines[engine])
     else:
         engines = [Baidu, Google, Bing, Yahoo]
-
 
     if options.domains is not None:
         for p in options.domains.split(','):
