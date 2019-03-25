@@ -309,7 +309,7 @@ class FofaEngine(object):
 
 
 # Zoomeye的效果还可以，但是比fofa还贵
-class ZoomeyeEngine():
+class ZoomeyeEngine(object):
     def __init__(self, domain, zoomeye_struct, conf):
         self.headers = {
             "Authorization": "JWT {token}"
@@ -376,7 +376,7 @@ class ZoomeyeEngine():
 
 
 # censys的接口有点不稳定，经常出现timeout的情况
-class CensysEngine():
+class CensysEngine(object):
     def __init__(self, domain, censys_struct, conf):
         self.domain = domain
         self.conf = conf
@@ -858,6 +858,7 @@ class EnumSubDomain(object):
             else:
                 if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
+                    print('\n')
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
         return sub_domain, ret
@@ -973,14 +974,18 @@ class EnumSubDomain(object):
                             if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
+                                    print('\n')
                                     logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
                                     self.domains_rs.append(location)
                                     self.domains_rs_processed.append(location)
                             else:
+                                print('\n')
                                 logger.info('not same domain: {l}'.format(l=location))
                     else:
+                        print('\n')
                         logger.info('not domain(maybe path): {l}'.format(l=location))
                 if html is None:
+                    print('\n')
                     logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
                     return
                 # collect response html's domains
@@ -992,6 +997,7 @@ class EnumSubDomain(object):
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
+                            print('\n')
                             logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd, l=len(self.domains_rs)))
                             self.domains_rs.append(rd)
                             self.domains_rs_processed.append(rd)
@@ -1026,8 +1032,8 @@ class EnumSubDomain(object):
                         self.data[sub_domain] = self.wildcard_ips
                     else:
                         self.data[sub_domain] = self.wildcard_ips
-                    logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    print('\n')
+                    logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -1185,8 +1191,9 @@ class EnumSubDomain(object):
         if self.cainfo:
             logger.info('Collect subdomains in CA...')
             ca_subdomains = CAInfo(self.domain).get_subdomains()
-            tasks = (self.query(sub) for sub in ca_subdomains)
-            self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
+            if len(ca_subdomains):
+                tasks = (self.query(sub) for sub in ca_subdomains)
+                self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
             logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
@@ -1458,6 +1465,7 @@ def main():
                                 multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
             esd.run()
     except KeyboardInterrupt:
+        print('\n')
         logger.info('Bye :)')
         exit(0)
 
