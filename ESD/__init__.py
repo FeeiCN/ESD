@@ -51,6 +51,7 @@ from collections import Counter
 from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
+from cainfo import CAInfo
 
 __version__ = '0.0.24'
 
@@ -173,55 +174,6 @@ class DNSTransfer(object):
             return ret_zones
         except BaseException:
             return []
-
-
-class CAInfo(object):
-    def __init__(self, domain):
-        self.domain = domain
-
-    def dns_resolve(self):
-        padding_domain = 'www.' + self.domain
-        # loop = asyncio.get_event_loop()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        resolver = aiodns.DNSResolver(loop=loop)
-        f = resolver.query(padding_domain, 'A')
-        result = loop.run_until_complete(f)
-        return result[0].host
-
-    def get_cert_info_by_ip(self, ip):
-        s = socket.socket()
-        s.settimeout(2)
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        cert_path = base_dir + '/cacert.pem'
-        connect = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
-        connect.settimeout(2)
-        connect.connect((ip, 443))
-        cert_data = connect.getpeercert().get('subjectAltName')
-        return cert_data
-
-    def get_ca_domain_info(self):
-        domain_list = list()
-        try:
-            ip = self.dns_resolve()
-            cert_data = self.get_cert_info_by_ip(ip)
-        except Exception as e:
-            return domain_list
-
-        for domain_info in cert_data:
-            hostname = domain_info[1]
-            if not hostname.startswith('*') and hostname.endswith(self.domain):
-                domain_list.append(hostname)
-
-        return domain_list
-
-    def get_subdomains(self):
-        subs = list()
-        subdomain_list = self.get_ca_domain_info()
-        for sub in subdomain_list:
-            subs.append(sub[:len(sub) - len(self.domain) - 1])
-        return subs
-
 
 # 使用shodan接口进行枚举，但经测试并不能增加多少成果
 class ShodanEngine(object):
@@ -1190,9 +1142,9 @@ class EnumSubDomain(object):
         ca_subdomains = []
         if self.cainfo:
             logger.info('Collect subdomains in CA...')
-            ca_subdomains = CAInfo(self.domain).get_subdomains()
+            ca_subdomains = CAInfo(self.domain).get_domains(only_subdomains=True)
             if len(ca_subdomains):
-                tasks = (self.query(sub) for sub in ca_subdomains)
+                tasks = (self.query(sub.replace(self.domain, '')) for sub in ca_subdomains)
                 self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
             logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
@@ -1363,7 +1315,7 @@ def main():
     parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
     parser.add_option('-n', '--no-brute', dest='nobrute', help='Do not use brute force', action='store_false', default=True)
     parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
-    parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
+    parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=True)
     parser.add_option('-m', '--multi-resolve', dest='multiresolve', help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
     parser.add_option('--skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
     parser.add_option('--fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
