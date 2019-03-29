@@ -40,6 +40,7 @@ import tldextract
 import json
 import configparser
 import base64
+import pkg_resources
 from tqdm import *
 from colorama import Fore
 from shodan import Shodan
@@ -53,7 +54,7 @@ from itertools import islice
 from difflib import SequenceMatcher
 from cainfo import CAInfo
 
-__version__ = '0.0.24'
+__version__ = pkg_resources.require('ESD')[0].version
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 

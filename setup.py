@@ -15,7 +15,8 @@
     :copyright: Copyright (c) 2018 Feei. All rights reserved
 """
 import setuptools
-from ESD import __version__
+
+__version__ = '0.0.24'
 
 with open('README.md', 'r') as f:
     long_description = f.read()
@@ -39,7 +40,7 @@ setuptools.setup(
         'uvloop',
         'backoff',
         'dnspython',
-        'pysocks', 
+        'pysocks',
         'tldextract',
         'shodan',
         'tqdm',
@@ -53,7 +54,7 @@ setuptools.setup(
     ),
     include_package_data=True,
     package_data={
-        '': ['*.esd','*.pem','*.ini']
+        '': ['*.esd', '*.pem', '*.ini']
     },
     entry_points={
         'console_scripts': [
