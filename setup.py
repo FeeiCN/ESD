@@ -15,9 +15,14 @@
     :copyright: Copyright (c) 2018 Feei. All rights reserved
 """
 import setuptools
+<<<<<<< HEAD
 from ESD.banner import Banner
 
 __version__ = Banner().__version__
+=======
+
+__version__ = '0.0.24'
+>>>>>>> 74a465872b2529123b000fbc1aa791fb4b0f6769
 
 with open('README.md', 'r') as f:
     long_description = f.read()
@@ -41,7 +46,7 @@ setuptools.setup(
         'uvloop',
         'backoff',
         'dnspython',
-        'pysocks', 
+        'pysocks',
         'tldextract',
         'shodan',
         'tqdm',
@@ -55,7 +60,7 @@ setuptools.setup(
     ),
     include_package_data=True,
     package_data={
-        '': ['*.esd','*.pem','*.ini']
+        '': ['*.esd', '*.pem', '*.ini']
     },
     entry_points={
         'console_scripts': [
