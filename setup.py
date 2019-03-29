@@ -15,7 +15,9 @@
     :copyright: Copyright (c) 2018 Feei. All rights reserved
 """
 import setuptools
-from ESD import __version__
+from ESD.banner import Banner
+
+__version__ = Banner().__version__
 
 with open('README.md', 'r') as f:
     long_description = f.read()
