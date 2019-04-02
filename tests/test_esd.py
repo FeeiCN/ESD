@@ -1,6 +1,5 @@
 import time
 from ESD import EnumSubDomain
-from ESD import DNSQuery
 from difflib import SequenceMatcher
 
 '''def test_load_sub_domain_dict():
