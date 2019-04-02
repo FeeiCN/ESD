@@ -666,7 +666,9 @@ class Baidu(EngineBase):
 
 
 class EnumSubDomain(object):
-    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False, split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, brute=True, transfer=True, cainfo=True, multiresolve=False, shodan_key=None, fofa={}, zoomeye={}, censys={}):
+    def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False,
+                 split=None, engines=[Baidu, Google, Bing, Yahoo], proxy={}, multiresolve=False,
+                 shodan_key=None, fofa={'fkey': None, 'femail': None}, zoomeye={'username': None, 'password': None}, censys={'uid': None, 'secret': None}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=__version__))
         logger.info('----------')
@@ -677,9 +679,6 @@ class EnumSubDomain(object):
         self.domain = domain
         self.skip_rsc = skip_rsc
         self.split = split
-        self.brute = brute
-        self.transfer = transfer
-        self.cainfo = cainfo
         self.multiresolve = multiresolve
         self.skey = shodan_key
         self.fofa_struct = fofa
@@ -1096,7 +1095,7 @@ class EnumSubDomain(object):
         :return:
         """
         start_time = time.time()
-        subs = self.load_sub_domain_dict() if self.brute else []
+        subs = self.load_sub_domain_dict()
         self.remainder = len(subs)
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
         logger.info('Generate coroutines...')
@@ -1189,24 +1188,22 @@ class EnumSubDomain(object):
 
         # CA subdomain info
         ca_subdomains = []
-        if self.cainfo:
-            logger.info('Collect subdomains in CA...')
-            ca_subdomains = CAInfo(self.domain).get_subdomains()
-            if len(ca_subdomains):
-                tasks = (self.query(sub) for sub in ca_subdomains)
-                self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
-            logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
+        logger.info('Collect subdomains in CA...')
+        ca_subdomains = CAInfo(self.domain).get_subdomains()
+        if len(ca_subdomains):
+            tasks = (self.query(sub) for sub in ca_subdomains)
+            self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
+        logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
         transfer_info = []
-        if self.transfer:
-            logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
-            transfer_info = DNSTransfer(self.domain).transfer_info()
-            if len(transfer_info):
-                logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
-                tasks = (self.query(sub) for sub in transfer_info)
-                self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
-            logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
+        logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
+        transfer_info = DNSTransfer(self.domain).transfer_info()
+        if len(transfer_info):
+            logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
+            tasks = (self.query(sub) for sub in transfer_info)
+            self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
+        logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
         # Use search engines to enumerate subdomains (support Baidu,Bing,Google,Yahoo)
         subdomains = []
@@ -1363,9 +1360,6 @@ def main():
     parser.add_option('-e', '--engines', dest='engines', help='Choose an engine in baidu,google,bing or yahoo, split with ","')
     parser.add_option('-S', '--split', dest='split', help='Split the dict into several parts', default='1/1')
     parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
-    parser.add_option('-n', '--no-brute', dest='nobrute', help='Do not use brute force', action='store_false', default=True)
-    parser.add_option('-t', '--dns-transfer', dest='transfer', help='Use DNS Transfer vulnerability to find subdomains', action='store_true', default=False)
-    parser.add_option('-c', '--ca-info', dest='cainfo', help='Use CA info to find subdomains', action='store_true', default=False)
     parser.add_option('-m', '--multi-resolve', dest='multiresolve', help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
     parser.add_option('--skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
     parser.add_option('--fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
@@ -1389,9 +1383,6 @@ def main():
     skip_rsc = options.skiprsc
     split_list = options.split.split('/')
     split = options.split
-    brute = options.nobrute
-    dns_transfer = options.transfer
-    ca_info = options.cainfo
     multiresolve = options.multiresolve
     skey = options.shodankey
 
@@ -1456,14 +1447,14 @@ def main():
     if 'esd' in os.environ:
         debug = os.environ['esd']
     else:
-        debug = True
+        debug = False
     logger.info('Debug: {d}'.format(d=debug))
     logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
 
     logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
     try:
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy, brute=brute, transfer=dns_transfer, cainfo=ca_info,
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split, engines=engines, proxy=proxy,
                                 multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
             esd.run()
     except KeyboardInterrupt:
