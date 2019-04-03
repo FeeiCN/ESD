@@ -1,5 +1,6 @@
 from ESD.lib.basePackage import *
 from ESD.banner import Banner
+from platform import platform
 from ESD.lib import logger, CAInfo, DNSPod, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -417,6 +418,15 @@ class EnumSubDomain(object):
         Run
         :return:
         """
+
+        # macOS X high sierra高版本默认禁止动态fork，需要手动开启
+        current_system = platform()
+        if current_system.startswith('Darwin'):
+            if 'OBJC_DISABLE_INITIALIZE_FORK_SAFETY' not in os.environ.keys():
+                shell = os.environ['SHELL'].split('/')[-1]
+                logger.warning('Use "echo \'export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES\'>>~/.{shell}rc&source ~/.{shell}rc" first on Mac OSX system'.format(shell=shell))
+                exit(-1)
+
         start_time = time.time()
         subs = self.load_sub_domain_dict()
         self.remainder = len(subs)
