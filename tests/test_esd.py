@@ -106,6 +106,7 @@ def test_dns_query():
     print(res)
 
 
+
 test_dns_query()'''
 domain_fuzz = EnumSubDomain('ivte.feei.cn',debug=True)
 a = domain_fuzz.run()
