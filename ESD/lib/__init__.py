@@ -1,4 +1,4 @@
-from ESD.lib.logger import logger
+from .logger import logger
 from .caInfo import CAInfo
 from .dnsPod import DNSPod
 from .dnsTransfer import DNSTransfer

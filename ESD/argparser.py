@@ -2,8 +2,8 @@ import re
 import os
 import tldextract
 from optparse import OptionParser
-from ESD.banner import Banner
-from ESD.lib.logger import logger
+from .banner import Banner
+from .lib.logger import logger
 
 
 class Parse(object):

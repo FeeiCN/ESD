@@ -1,7 +1,7 @@
-from ESD.lib.basePackage import *
-from ESD.banner import Banner
+from .lib.basePackage import *
+from .banner import Banner
 from platform import platform
-from ESD.lib import logger, CAInfo, DNSPod, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine
+from .lib import logger, CAInfo, DNSPod, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -531,7 +531,6 @@ class EnumSubDomain(object):
         logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
-        transfer_info = []
         logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
         transfer_info = DNSTransfer(self.domain).transfer_info()
         if len(transfer_info):
