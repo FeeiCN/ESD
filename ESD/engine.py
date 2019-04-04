@@ -69,6 +69,7 @@ class EnumSubDomain(object):
         # RSC ratio
         self.rsc_ratio = 0.8
         self.remainder = 0
+        self.count = 0
         # Request Header
         self.request_headers = {
             'Connection': 'keep-alive',
@@ -199,6 +200,7 @@ class EnumSubDomain(object):
                 if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
                     print('', end='\n')
+                    self.count += 1
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
         return sub_domain, ret
@@ -510,7 +512,7 @@ class EnumSubDomain(object):
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
             self.loop.run_until_complete(self.start(tasks, len(subs)))
-            logger.info("Brute Force subdomain count: {total}".format(total=len(subs)))
+            logger.info("Brute Force subdomain count: {total}".format(total=self.count))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 

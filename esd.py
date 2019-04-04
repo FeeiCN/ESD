@@ -2,6 +2,7 @@ from ESD.lib.logger import logger
 from ESD.engine import EnumSubDomain
 from ESD.argparser import Parse
 
+
 def main():
     domains, debug, response_filter, skip_rsc, split, multiresolve, skey, fofa_struct, zoomeye_struct, censys_struct, proxy = Parse().parse()
 
