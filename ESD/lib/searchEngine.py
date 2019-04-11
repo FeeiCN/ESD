@@ -1,7 +1,6 @@
 import re
 import time
 import random
-import multiprocessing
 import requests
 import threading
 from urllib.parse import urlparse
@@ -9,9 +8,9 @@ from collections import Counter
 from .logger import logger
 
 
-class EngineBase(multiprocessing.Process):
+class EngineBase(threading.Thread):
     def __init__(self, base_url, domain, q, verbose, proxy):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.lock = threading.Lock()
         self.q = q
         self.subdomains = []
