@@ -1,6 +1,5 @@
 import requests
 import re
-import asyncio
 
 
 class DNSPod(object):

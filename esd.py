@@ -1,5 +1,5 @@
-from ESD.lib.logger import logger
 from ESD.engine import EnumSubDomain
+from ESD.lib.logger import logger
 from ESD.argparser import Parse
 
 
@@ -16,5 +16,5 @@ def main():
         exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
