@@ -1052,7 +1052,8 @@ class EnumSubDomain(object):
                     m = 'Stay'
                 logger.info('{d} : {d2} {ratio} {m}'.format(d=domain, d2=domain2, ratio=ratio, m=m))
 
-    def dnspod(self):
+    #dnspod接口已失效，删除
+    '''def dnspod(self):
         """
         http://feei.cn/esd
         :return:
@@ -1066,7 +1067,7 @@ class EnumSubDomain(object):
             self.loop.run_until_complete(self.start(tasks, len(domains)))
         except Exception as e:
             domains = []
-        return domains
+        return domains'''
 
     def check(self, dns):
         logger.info("Checking if DNS server {dns} is available".format(dns=dns))
@@ -1182,13 +1183,8 @@ class EnumSubDomain(object):
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
-        # DNSPod JSONP API
-        logger.info('Collect DNSPod JSONP API\'s subdomains...')
-        dnspod_domains = self.dnspod()
-        logger.info('DNSPod JSONP API Count: {c}'.format(c=len(dnspod_domains)))
 
         # CA subdomain info
-        ca_subdomains = []
         logger.info('Collect subdomains in CA...')
         ca_subdomains = CAInfo(self.domain).get_subdomains()
         if len(ca_subdomains):
@@ -1197,7 +1193,6 @@ class EnumSubDomain(object):
         logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
         # DNS Transfer Vulnerability
-        transfer_info = []
         logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
         transfer_info = DNSTransfer(self.domain).transfer_info()
         if len(transfer_info):
@@ -1271,7 +1266,7 @@ class EnumSubDomain(object):
                 self.loop.run_until_complete(self.start(tasks, len(censys_result)))
             logger.info("Censys subdomain count: {subdomains_count}".format(subdomains_count=len(censys_result)))
 
-        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result)
+        total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
@@ -1284,7 +1279,7 @@ class EnumSubDomain(object):
 
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
-            total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
+            total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
             logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data),
