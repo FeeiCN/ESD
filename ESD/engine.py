@@ -1,7 +1,6 @@
 from .lib.basePackage import *
 from .banner import Banner
-from platform import platform
-from .lib import logger, CAInfo, DNSPod, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine
+from .lib import logger, CAInfo, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine, DnsSec
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -507,14 +506,6 @@ class EnumSubDomain(object):
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
 
-        # DNSPod JSONP API
-        logger.info('Collect DNSPod JSONP API\'s subdomains...')
-        dnspod_domains = DNSPod().dnspod()
-        if len(dnspod_domains):
-            tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in dnspod_domains)
-            self.loop.run_until_complete(self.start(tasks, len(dnspod_domains)))
-        logger.info('DNSPod JSONP API Count: {c}'.format(c=len(dnspod_domains)))
-
         # CA subdomain info
         logger.info('Collect subdomains in CA...')
         ca_subdomains = CAInfo(self.domain).get_subdomains()
@@ -595,7 +586,19 @@ class EnumSubDomain(object):
                 self.loop.run_until_complete(self.start(tasks, len(censys_result)))
             logger.info("Censys subdomain count: {subdomains_count}".format(subdomains_count=len(censys_result)))
 
-        total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result)
+        # Use dnssec to enumerate subdomains
+        logger.info("Enumerating subdomains with DnsSec")
+        zone_info = []
+        dnssec = DnsSec(self.domain, ['8.8.8.8'], 10, 'tcp')
+        is_support_dnssec = dnssec.dns_sec_check()
+        if is_support_dnssec:
+            zone_info = dnssec.ds_zone_walk()
+            if len(zone_info):
+                tasks = (self.query(sub) for sub in zone_info)
+                self.loop.run_until_complete(self.start(tasks, len(zone_info)))
+            logger.info("DnsSec subdomain count: {subdomains_count}".format(subdomains_count=len(zone_info)))
+
+        total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result + zone_info)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
@@ -608,7 +611,7 @@ class EnumSubDomain(object):
 
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
-            total_subs = set(subs + dnspod_domains + list(subdomains) + transfer_info + ca_subdomains)
+            total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
             logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data),
