@@ -41,7 +41,6 @@ setuptools.setup(
         'uvloop',
         'backoff',
         'dnspython',
-        'pysocks',
         'tldextract',
         'shodan',
         'tqdm',

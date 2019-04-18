@@ -39,6 +39,7 @@
 - [X] 收集DNS域传送子域名
 - [x] 收集搜索引擎子域名
 - [x] 收集zoomeye、censys、fofa、shodan的接口结果
+- [x] 利用dnssec拓展的nsec查询收集子域名
 
 #### DNS服务器
 - 解决各家DNS服务商对于网络线路出口判定不一致问题
@@ -107,3 +108,4 @@ domains = EnumSubDomain('feei.cn').run()
 - https://github.com/aboul3la/Sublist3r
 - https://github.com/TheRook/subbrute
 - https://github.com/lijiejie/subDomainsBrute
+- https://github.com/darkoperator/dnsrecon
