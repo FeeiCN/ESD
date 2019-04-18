@@ -7,7 +7,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 class EnumSubDomain(object):
     def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False,
-                 split=None, proxy={}, multiresolve=False, shodan_key=None,
+                 split=None, proxy={}, multiresolve=False, process_bar=True, shodan_key=None,
                  fofa={'fkey': None, 'femail': None}, zoomeye={'username': None, 'password': None}, censys={'uid': None, 'secret': None}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=Banner().__version__))
@@ -25,6 +25,7 @@ class EnumSubDomain(object):
         self.conf = configparser.ConfigParser()
         self.zoomeye_struct = zoomeye
         self.censys_struct = censys
+        self.process_bar = process_bar
         self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
         if dns_servers is None:
             dns_servers = [
@@ -233,8 +234,12 @@ class EnumSubDomain(object):
         :param tasks:
         :return:
         """
-        for res in tqdm(self.limited_concurrency_coroutines(tasks, self.coroutine_count), bar_format="%s{l_bar}%s{bar}%s{r_bar}%s" % (Fore.YELLOW, Fore.YELLOW, Fore.YELLOW, Fore.RESET), total=tasks_num):
-            await res
+        if self.process_bar:
+            for res in tqdm(self.limited_concurrency_coroutines(tasks, self.coroutine_count), bar_format="%s{l_bar}%s{bar}%s{r_bar}%s" % (Fore.YELLOW, Fore.YELLOW, Fore.YELLOW, Fore.RESET), total=tasks_num):
+                await res
+        else:
+            for res in self.limited_concurrency_coroutines(tasks, self.coroutine_count):
+                await res
 
     @staticmethod
     def data_clean(data):
