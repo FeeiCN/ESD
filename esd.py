@@ -1,20 +1,8 @@
-from ESD.engine import EnumSubDomain
-from ESD.lib.logger import logger
-from ESD.argparser import Parse
+import re
+import sys
 
+from ESD import main
 
-def main():
-    domains, debug, response_filter, skip_rsc, split, multiresolve, skey, fofa_struct, zoomeye_struct, censys_struct, proxy = Parse().parse()
-
-    try:
-        for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=True, split=split, proxy=proxy,
-                                multiresolve=multiresolve, shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
-            esd.run()
-    except KeyboardInterrupt:
-        logger.info('Bye :)')
-        exit(0)
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
+    sys.exit(main())
