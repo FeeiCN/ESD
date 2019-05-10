@@ -106,6 +106,9 @@ def test_dns_query():
 
 
 test_dns_query()'''
-domain_fuzz = EnumSubDomain('feei.cn',debug=True,process_bar=False)
-a = domain_fuzz.run()
-
+try:
+    domain_fuzz = EnumSubDomain('xiaodian.com', skip_rsc=False, debug=True, process_bar=False)
+    a = domain_fuzz.run()
+except KeyboardInterrupt:
+    print('logout')
+    exit(-1)

@@ -2,12 +2,14 @@ from .lib.basePackage import *
 from .banner import Banner
 from .lib import logger, CAInfo, DNSTransfer, DNSQuery, Google, Bing, Baidu, Yahoo, ZoomeyeEngine, FofaEngine, ShodanEngine, CensysEngine, DnsSec
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+# asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+loop = uvloop.new_event_loop()
+asyncio.set_event_loop(loop)
 
 
 class EnumSubDomain(object):
     def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False,
-                 split=None, proxy={}, multiresolve=False, process_bar=True, shodan_key=None,
+                 split=None, proxy={}, process_bar=True, shodan_key=None,
                  fofa={'fkey': None, 'femail': None}, zoomeye={'username': None, 'password': None}, censys={'uid': None, 'secret': None}):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
         logger.info('Version: {v}'.format(v=Banner().__version__))
@@ -19,7 +21,6 @@ class EnumSubDomain(object):
         self.domain = domain
         self.skip_rsc = skip_rsc
         self.split = split
-        self.multiresolve = multiresolve
         self.skey = shodan_key
         self.fofa_struct = fofa
         self.conf = configparser.ConfigParser()
@@ -157,7 +158,7 @@ class EnumSubDomain(object):
 
         return dicts
 
-    async def query(self, sub):
+    async def query(self, sub, is_brute=True):
         """
         Query domain
         :param sub:
@@ -191,7 +192,7 @@ class EnumSubDomain(object):
             # the subdomain IP that is burst is consistent with the IP
             # that does not exist in the domain name resolution,
             # the response similarity is discarded for further processing.
-            if self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
+            if is_brute and self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
                 if self.skip_rsc:
                     logger.debug('{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(sub=sub_domain))
                 else:
@@ -515,7 +516,7 @@ class EnumSubDomain(object):
         logger.info('Collect subdomains in CA...')
         ca_subdomains = CAInfo(self.domain).get_subdomains()
         if len(ca_subdomains):
-            tasks = (self.query(sub) for sub in ca_subdomains)
+            tasks = (self.query(sub, False) for sub in ca_subdomains)
             self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
         logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
 
@@ -524,7 +525,7 @@ class EnumSubDomain(object):
         transfer_info = DNSTransfer(self.domain).transfer_info()
         if len(transfer_info):
             logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
-            tasks = (self.query(sub) for sub in transfer_info)
+            tasks = (self.query(sub, False) for sub in transfer_info)
             self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
         logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
@@ -538,12 +539,11 @@ class EnumSubDomain(object):
             enum.join()
         subdomains = set(subdomains_queue)
         if len(subdomains):
-            tasks = (self.query(sub) for sub in subdomains)
+            tasks = (self.query(sub, False) for sub in subdomains)
             self.loop.run_until_complete(self.start(tasks, len(subdomains)))
         logger.info('Search engines subdomain count: {subdomains_count}'.format(subdomains_count=len(subdomains)))
 
         # Use shodan to enumerate subdomains (need key and money)
-        shodan_result = []
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.conf.read(base_dir + "/key.ini")
         shodan = ShodanEngine(self.skey, self.conf, self.domain)
@@ -552,72 +552,56 @@ class EnumSubDomain(object):
             logger.info('Enumerating subdomains with Shodan')
             shodan_result = shodan.search()
             if len(shodan_result):
-                tasks = (self.query(sub) for sub in shodan_result)
+                tasks = (self.query(sub, False) for sub in shodan_result)
                 self.loop.run_until_complete(self.start(tasks, len(shodan_result)))
             logger.info("Shodan subdomain count: {subdomains_count}".format(subdomains_count=len(shodan_result)))
 
         # Use fofa to enumerate subdomains (need key and money)
-        fofa_result = []
         fofa = FofaEngine(self.fofa_struct, self.conf, self.domain)
         is_success = fofa.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Fofa")
             fofa_result = fofa.search()
             if len(fofa_result):
-                tasks = (self.query(sub) for sub in fofa_result)
+                tasks = (self.query(sub, False) for sub in fofa_result)
                 self.loop.run_until_complete(self.start(tasks, len(fofa_result)))
             logger.info("Fofa subdomain count: {subdomains_count}".format(subdomains_count=len(fofa_result)))
 
         # Use zoomeye to enumerate subdomains (need account or money)
-        zoomeye_result = []
         zoomeye = ZoomeyeEngine(self.domain, self.zoomeye_struct, self.conf)
         is_success = zoomeye.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Zoomeye")
             zoomeye_result = zoomeye.enumerate()
             if len(zoomeye_result):
-                tasks = (self.query(sub) for sub in zoomeye_result)
+                tasks = (self.query(sub, False) for sub in zoomeye_result)
                 self.loop.run_until_complete(self.start(tasks, len(zoomeye_result)))
             logger.info("Zoomeye subdomain count: {subdomains_count}".format(subdomains_count=len(zoomeye_result)))
 
-        censys_result = []
         censys = CensysEngine(self.domain, self.censys_struct, self.conf)
         is_success = censys.initialize(base_dir)
         if is_success:
             logger.info("Enumerating subdomains with Censys")
             censys_result = censys.search()
             if len(censys_result):
-                tasks = (self.query(sub) for sub in censys_result)
+                tasks = (self.query(sub, False) for sub in censys_result)
                 self.loop.run_until_complete(self.start(tasks, len(censys_result)))
             logger.info("Censys subdomain count: {subdomains_count}".format(subdomains_count=len(censys_result)))
 
         # Use dnssec to enumerate subdomains
-        logger.info("Enumerating subdomains with DnsSec")
-        zone_info = []
         dnssec = DnsSec(self.domain, ['8.8.8.8'], 10, 'tcp')
         is_support_dnssec = dnssec.dns_sec_check()
         if is_support_dnssec:
+            logger.info("Enumerating subdomains with DnsSec")
             zone_info = dnssec.ds_zone_walk()
             if len(zone_info):
-                tasks = (self.query(sub) for sub in zone_info)
+                tasks = (self.query(sub, False) for sub in zone_info)
                 self.loop.run_until_complete(self.start(tasks, len(zone_info)))
             logger.info("DnsSec subdomain count: {subdomains_count}".format(subdomains_count=len(zone_info)))
 
-        total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains + list(shodan_result) + fofa_result + zoomeye_result + censys_result + zone_info)
-
-        # Use TXT,SOA,MX,AAAA record to find sub domains
-        if self.multiresolve:
-            logger.info('Enumerating subdomains with TXT, SOA, MX, AAAA record...')
-            dnsquery = DNSQuery(self.domain, total_subs, self.domain)
-            record_info = dnsquery.dns_query()
-            tasks = (self.query(record[:record.find('.')]) for record in record_info)
-            self.loop.run_until_complete(self.start(tasks, len(record_info)))
-            logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
-
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
-            total_subs = set(subs + list(subdomains) + transfer_info + ca_subdomains)
-            self.wildcard_subs = list(set(subs).union(total_subs))
+            self.wildcard_subs = list(set(subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(datetime.timedelta(seconds=time_consume_dns))))
             logger.info('Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(len_subs=len(subs), len_exist=len(self.data),
                                                                                                                                                           len_remain=len(self.wildcard_subs)))

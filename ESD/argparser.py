@@ -16,7 +16,6 @@ class Parse(object):
         parser.add_option('-s', '--skip-rsc', dest='skiprsc', help='Skip response similary compare', action='store_true', default=False)
         parser.add_option('-S', '--split', dest='split', help='Split the dict into several parts', default='1/1')
         parser.add_option('-p', '--proxy', dest='proxy', help='Use socks5 proxy to access Google and Yahoo')
-        parser.add_option('-m', '--multi-resolve', dest='multiresolve', help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
         parser.add_option('--skey', '--shodan-key', dest='shodankey', help='Define the api of shodan')
         parser.add_option('--fkey', '--fofa-key', dest='fofakey', help='Define the key of fofa')
         parser.add_option('--femail', '--fofa-email', dest='fofaemail', help='The email of your fofa account')
@@ -31,7 +30,6 @@ class Parse(object):
         skip_rsc = options.skiprsc
         split_list = options.split.split('/')
         split = options.split
-        multiresolve = options.multiresolve
         skey = options.shodankey
 
         fofa_struct = {
@@ -94,4 +92,4 @@ class Parse(object):
 
         logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
 
-        return domains, debug, response_filter, skip_rsc, split, multiresolve, skey, fofa_struct, zoomeye_struct, censys_struct, proxy
+        return domains, debug, response_filter, skip_rsc, split, skey, fofa_struct, zoomeye_struct, censys_struct, proxy
