@@ -8,7 +8,7 @@ def main():
 
     try:
         for d in domains:
-            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=True, split=split, proxy=proxy,
+            esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=False, split=split, proxy=proxy,
                                 shodan_key=skey, fofa=fofa_struct, zoomeye=zoomeye_struct, censys=censys_struct)
             esd.run()
     except KeyboardInterrupt:
