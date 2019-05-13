@@ -171,8 +171,11 @@ class EnumSubDomain(object):
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+            x_sub_domain = "{sub}{random}".format(sub=sub ,random=random.randint(0, 9))
+            v_sub_domain = '{sub}.{domain}'.format(sub=x_sub_domain, domain=self.domain)
         try:
             ret = await self.resolver.query(sub_domain, 'A')
+            v_ret = await self.resolver.query(v_sub_domain, 'A')
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
@@ -188,17 +191,31 @@ class EnumSubDomain(object):
         else:
             ret = [r.host for r in ret]
             domain_ips = [s for s in ret]
+            v_domain_ips = [r.host for r in v_ret]
             # It is a wildcard domain name and
             # the subdomain IP that is burst is consistent with the IP
             # that does not exist in the domain name resolution,
             # the response similarity is discarded for further processing.
-            if is_brute and self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
+            if not is_brute:
+                if sub != self.wildcard_sub:
+                    self.data[sub_domain] = sorted(domain_ips)
+                    print('', end='\n')
+                    self.count += 1
+                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+            elif self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
                 if self.skip_rsc:
                     logger.debug('{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(sub=sub_domain))
                 else:
                     logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                if sub != self.wildcard_sub:
+                print(sub_domain)
+                print(domain_ips)
+                print(v_sub_domain)
+                print(v_domain_ips)
+                # 有一些域名会对特定子域名做泛解析比如dev*.mogujie.com所以需要二次判断
+                if sorted(domain_ips) == sorted(v_domain_ips) or set(v_domain_ips).issubset(domain_ips):
+                    logger.debug("{v_sub}* is a wildcard subdomain too.".format(v_sub=sub_domain))
+                else:
                     self.data[sub_domain] = sorted(domain_ips)
                     print('', end='\n')
                     self.count += 1
@@ -441,7 +458,7 @@ class EnumSubDomain(object):
                 logger.warning("@{dns} is not available, skip this DNS server".format(dns=dns))
                 continue
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
-            job = self.query(self.wildcard_sub)
+            job = self.query(self.wildcard_sub, False)
             sub, ret = self.loop.run_until_complete(job)
             logger.info('@{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
             if ret is None:
