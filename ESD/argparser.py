@@ -9,7 +9,7 @@ from .lib.logger import logger
 class Parse(object):
     def parse(self):
         Banner().show()
-        parser = OptionParser('Usage: python ESD.py -d feei.cn -F response_filter -e baidu,google,bing,yahoo -p user:pass@host:port')
+        parser = OptionParser('Usage: python ESD.py -d feei.cn -F response_filter -p user:pass@host:port')
         parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
         parser.add_option('-f', '--file', dest='input', help='Import domains from this file')
         parser.add_option('-F', '--filter', dest='filter', help='Response filter')

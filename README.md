@@ -79,9 +79,6 @@ esd --file targets.txt
 # 跳过相似度对比（开启这个选项会把所有泛解析的域名都过滤掉）
 esd --domain qq.com --skip-rsc
 
-# 使用搜索引擎进行子域名搜索（支持baidu、google、bing、yahoo，使用英文逗号分隔）
-esd --domain qq.com --engines baidu,google,bing,yahoo
-
 # 平均分割字典，加快爆破
 esd --domain qq.com --split 1/4
 

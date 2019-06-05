@@ -208,10 +208,6 @@ class EnumSubDomain(object):
                 else:
                     logger.debug('{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             else:
-                print(sub_domain)
-                print(domain_ips)
-                print(v_sub_domain)
-                print(v_domain_ips)
                 # 有一些域名会对特定子域名做泛解析比如dev*.mogujie.com所以需要二次判断
                 if sorted(domain_ips) == sorted(v_domain_ips) or set(v_domain_ips).issubset(domain_ips):
                     logger.debug("{v_sub}* is a wildcard subdomain too.".format(v_sub=sub_domain))
