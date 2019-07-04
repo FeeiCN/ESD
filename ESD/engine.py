@@ -199,7 +199,6 @@ class EnumSubDomain(object):
             if not is_brute:
                 if sub != self.wildcard_sub:
                     self.data[sub_domain] = sorted(domain_ips)
-                    print('', end='\n')
                     self.count += 1
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
             elif self.is_wildcard_domain and (sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
@@ -213,7 +212,6 @@ class EnumSubDomain(object):
                     logger.debug("{v_sub}* is a wildcard subdomain too.".format(v_sub=sub_domain))
                 else:
                     self.data[sub_domain] = sorted(domain_ips)
-                    print('', end='\n')
                     self.count += 1
                     logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
         self.remainder += -1
@@ -334,18 +332,14 @@ class EnumSubDomain(object):
                             if location[-len(self.domain) - 1:] == '.{d}'.format(d=self.domain):
                                 # collect redirecting's domains
                                 if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
-                                    print('', end='\n')
                                     logger.info('[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location, len=len(self.domains_rs)))
                                     self.domains_rs.append(location)
                                     self.domains_rs_processed.append(location)
                             else:
-                                print('', end='\n')
                                 logger.info('not same domain: {l}'.format(l=location))
                     else:
-                        print('', end='\n')
                         logger.info('not domain(maybe path): {l}'.format(l=location))
                 if html is None:
-                    print('', end='\n')
                     logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
                     return
                 # collect response html's domains
@@ -357,7 +351,6 @@ class EnumSubDomain(object):
                         continue
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
-                            print('', end='\n')
                             logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd, l=len(self.domains_rs)))
                             self.domains_rs.append(rd)
                             self.domains_rs_processed.append(rd)
@@ -392,7 +385,6 @@ class EnumSubDomain(object):
                         self.data[sub_domain] = self.wildcard_ips
                     else:
                         self.data[sub_domain] = self.wildcard_ips
-                    print('', end='\n')
                     logger.info('{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
         except Exception as e:
             logger.debug(traceback.format_exc())
