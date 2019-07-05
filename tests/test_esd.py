@@ -105,10 +105,13 @@ def test_dns_query():
     print(res)
 
 
+
 test_dns_query()'''
+
 try:
     domain_fuzz = EnumSubDomain('weshop.com', skip_rsc=False, debug=True, process_bar=False)
     a = domain_fuzz.run()
 except KeyboardInterrupt:
     print('logout')
     exit(-1)
+
