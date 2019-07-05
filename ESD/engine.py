@@ -168,6 +168,7 @@ class EnumSubDomain(object):
         # root domain
         if sub == '@' or sub == '':
             sub_domain = self.domain
+            v_sub_domain = ''
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
@@ -175,7 +176,7 @@ class EnumSubDomain(object):
             v_sub_domain = '{sub}.{domain}'.format(sub=x_sub_domain, domain=self.domain)
         try:
             ret = await self.resolver.query(sub_domain, 'A')
-            v_ret = await self.resolver.query(v_sub_domain, 'A')
+            v_ret = await self.resolver.query(v_sub_domain, 'A') if v_sub_domain != '' else []
         except aiodns.error.DNSError as e:
             err_code, err_msg = e.args[0], e.args[1]
             # 1:  DNS server returned answer with no data
