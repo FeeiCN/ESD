@@ -1,6 +1,6 @@
 class Banner(object):
     def __init__(self):
-        self.__version__ = '0.0.26'
+        self.__version__ = '0.0.26b'
 
     def show(self):
         print("""\033[94m
