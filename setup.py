@@ -44,7 +44,7 @@ setuptools.setup(
         'shodan',
         'tqdm',
         'colorama',
-        'censys'
+        'censys==0.0.8'
     ],
     classifiers=(
         "Topic :: Security",
