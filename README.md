@@ -102,8 +102,5 @@ domains = EnumSubDomain('feei.cn').run()
 - 提升扫描速度
 - 支持三级子域名，多种组合更多可能性
 
-## 参考
-- http://feei.cn/esd
-- https://github.com/aboul3la/Sublist3r
-- https://github.com/TheRook/subbrute
-- https://github.com/lijiejie/subDomainsBrute
+## 文档
+- https://github.com/FeeiCN/ESD/wiki
