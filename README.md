@@ -37,8 +37,6 @@
 - [X] 收集跳转过程中的子域名
 - [X] 收集HTTPS证书透明度子域名
 - [X] 收集DNS域传送子域名
-- [x] 收集搜索引擎子域名
-- [x] 收集zoomeye、censys、fofa、shodan的接口结果
 
 #### DNS服务器
 - 解决各家DNS服务商对于网络线路出口判定不一致问题
@@ -47,7 +45,7 @@
 - 根据网络情况自动剔除无效DNS，提高枚举成功率
 
 ## 使用
-仅在Python3下验证过
+仅在macOS、Linux的Python3下验证过
 ```bash
 # 安装
 pip install esd
