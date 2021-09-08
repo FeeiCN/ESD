@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -41,7 +41,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.25'
+__version__ = '0.0.28'
 
 handler = colorlog.StreamHandler()
 formatter = colorlog.ColoredFormatter(

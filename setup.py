@@ -25,36 +25,32 @@ setuptools.setup(
     version=__version__,
     author='Feei',
     author_email='feei@feei.cn',
-    description='Enumeration sub domains(枚举子域名)',
+    description='Enumeration Sub Domains(枚举子域名)',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/FeeiCN/ESD',
     packages=setuptools.find_packages(),
     install_requires=[
+        'colorlog',
         'aiodns',
         'aiohttp',
         'async-timeout',
-        'colorlog',
         'requests',
-        'uvloop',
         'backoff',
         'dnspython',
-        'pysocks', 
-        'tldextract',
-        'shodan',
+        'pysocks',
         'tqdm',
         'colorama',
-        'censys==0.0.8'
     ],
-    classifiers=(
+    classifiers=[
         "Topic :: Security",
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
-    ),
-    include_package_data=True,
+    ],
     package_data={
-        '': ['*.esd','*.pem','*.ini']
+        'esdx': ['ESD/*.esd', 'ESD/*.pem']
     },
+    include_package_data=True,
     entry_points={
         'console_scripts': [
             'esd=ESD:main'
