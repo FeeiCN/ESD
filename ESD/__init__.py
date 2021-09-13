@@ -41,7 +41,7 @@ from aiohttp.resolver import AsyncResolver
 from itertools import islice
 from difflib import SequenceMatcher
 
-__version__ = '0.0.28'
+__version__ = '0.0.29'
 
 handler = colorlog.StreamHandler()
 formatter = colorlog.ColoredFormatter(
@@ -224,14 +224,18 @@ class EnumSubDomain(object):
         self.skip_rsc = skip_rsc
         self.split = split
         self.multiresolve = multiresolve
-        self.stable_dns_servers = ['1.1.1.1', '223.5.5.5']
+        self.stable_dns_servers = ['119.29.29.29']
         if dns_servers is None:
+            # 除了DNSPod外，其它的都不适合作为稳定的DNS
+            # 要么并发会显著下降，要么就完全不能用
             dns_servers = [
-                '223.5.5.5',  # AliDNS
-                '114.114.114.114',  # 114DNS
-                '1.1.1.1',  # Cloudflare
-                '119.29.29.29',  # DNSPod
-                '1.2.4.8',  # sDNS
+                # DNS对结果准确性影响非常大，部分DNS结果会和其它DNS结果不一致甚至没结果
+                # '223.5.5.5',  # AliDNS
+                # '114.114.114.114',  # 114DNS
+                # '1.1.1.1',  # Cloudflare
+                '119.29.29.29',  # DNSPod https://www.dnspod.cn/products/public.dns
+                # '180.76.76.76',  # BaiduDNS
+                # '1.2.4.8',  # sDNS
                 # '11.1.1.1'  # test DNS, not available
                 # '8.8.8.8', # Google DNS, 延时太高了
             ]
@@ -260,10 +264,11 @@ class EnumSubDomain(object):
         self.wildcard_domains = {}
         # Corotines count
         self.coroutine_count = None
-        self.coroutine_count_dns = 100000
+        # 并发太高DNS Server的错误会大幅增加
+        self.coroutine_count_dns = 1000
         self.coroutine_count_request = 100
         # dnsaio resolve timeout
-        self.resolve_timeout = 2
+        self.resolve_timeout = 3
         # RSC ratio
         self.rsc_ratio = 0.8
         self.remainder = 0
@@ -289,6 +294,7 @@ class EnumSubDomain(object):
         # collect redirecting domains and response domains
         self.domains_rs = []
         self.domains_rs_processed = []
+        self.dns_query_errors = 0
 
     def generate_general_dicts(self, line):
         """
@@ -369,43 +375,51 @@ class EnumSubDomain(object):
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
             sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
-        try:
-            ret = await self.resolver.query(sub_domain, 'A')
-        except aiodns.error.DNSError as e:
-            err_code, err_msg = e.args[0], e.args[1]
-            # 1:  DNS server returned answer with no data
-            # 4:  Domain name not found
-            # 11: Could not contact DNS servers
-            # 12: Timeout while contacting DNS servers
-            if err_code not in [1, 4, 11, 12]:
-                logger.warning('{domain} {exception}'.format(domain=sub_domain, exception=e))
-        except Exception as e:
-            logger.info(sub_domain)
-            logger.warning(traceback.format_exc())
-
-        else:
-            ret = [r.host for r in ret]
-            domain_ips = [s for s in ret]
-            # It is a wildcard domain name and
-            # the subdomain IP that is burst is consistent with the IP
-            # that does not exist in the domain name resolution,
-            # the response similarity is discarded for further processing.
-            if self.is_wildcard_domain and (
-                    sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(self.wildcard_ips)):
-                if self.skip_rsc:
-                    logger.debug(
-                        '{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(
-                            sub=sub_domain))
-                else:
-                    logger.debug(
-                        '{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain,
-                                                                               ips=domain_ips))
+        # 如果存在特定异常则进行重试
+        for i in range(4):
+            try:
+                ret = await self.resolver.query(sub_domain, 'A')
+            except aiodns.error.DNSError as e:
+                err_code, err_msg = e.args[0], e.args[1]
+                # 域名确实不存在
+                # 4:  Domain name not found
+                # 1:  DNS server returned answer with no data
+                # 其它情况都需要重试，否则存在很高的遗漏
+                # 11: Could not contact DNS servers
+                # 12: Timeout while contacting DNS servers
+                if err_code not in [1, 4]:
+                    if i == 2:
+                        logger.warning(f'Try {i + 1} times, but failed. {sub_domain} {e}')
+                        self.dns_query_errors = self.dns_query_errors + 1
+                    continue
+            except Exception as e:
+                logger.info(sub_domain)
+                logger.warning(traceback.format_exc())
             else:
-                if sub != self.wildcard_sub:
-                    self.data[sub_domain] = sorted(domain_ips)
-                    print('', end='\n')
-                    self.count += 1
-                    logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+                ret = [r.host for r in ret]
+                domain_ips = [s for s in ret]
+                # It is a wildcard domain name and
+                # the subdomain IP that is burst is consistent with the IP
+                # that does not exist in the domain name resolution,
+                # the response similarity is discarded for further processing.
+                if self.is_wildcard_domain and (
+                        sorted(self.wildcard_ips) == sorted(domain_ips) or set(domain_ips).issubset(
+                    self.wildcard_ips)):
+                    if self.skip_rsc:
+                        logger.debug(
+                            '{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(
+                                sub=sub_domain))
+                    else:
+                        logger.debug(
+                            '{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain,
+                                                                                   ips=domain_ips))
+                else:
+                    if sub != self.wildcard_sub:
+                        self.data[sub_domain] = sorted(domain_ips)
+                        print('', end='\n')
+                        self.count += 1
+                        logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+            break
         self.remainder += -1
         return sub_domain, ret
 
@@ -605,24 +619,6 @@ class EnumSubDomain(object):
                     m = 'Stay'
                 logger.info('{d} : {d2} {ratio} {m}'.format(d=domain, d2=domain2, ratio=ratio, m=m))
 
-    def dnspod(self):
-        """
-        http://feei.cn/esd
-        :return:
-        """
-        # noinspection PyBroadException
-        try:
-            content = requests.get(
-                'http://www.dnspod.cn/proxy_diagnose/recordscan/{domain}?callback=feei'.format(domain=self.domain),
-                timeout=5).text
-            domains = re.findall(r'[^": ]*{domain}'.format(domain=self.domain), content)
-            domains = list(set(domains))
-            tasks = (self.query(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in domains)
-            self.loop.run_until_complete(self.start(tasks, len(domains)))
-        except Exception as e:
-            domains = []
-        return domains
-
     def check(self, dns):
         logger.info("Checking if DNS server {dns} is available".format(dns=dns))
         msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
@@ -652,7 +648,6 @@ class EnumSubDomain(object):
         """
         start_time = time.time()
         subs = self.load_sub_domain_dict()
-        self.remainder = len(subs)
         logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
         logger.info('Generate coroutines...')
         # Verify that all DNS server results are consistent
@@ -746,11 +741,7 @@ class EnumSubDomain(object):
             logger.info("Brute Force subdomain count: {total}".format(total=self.count))
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
-
-        # DNSPod JSONP API
-        logger.info('Collect DNSPod JSONP API\'s subdomains...')
-        dnspod_domains = self.dnspod()
-        logger.info('DNSPod JSONP API Count: {c}'.format(c=len(dnspod_domains)))
+        logger.info(f'DNS query errors: {self.dns_query_errors}')
 
         # CA subdomain info
         ca_subdomains = []
@@ -771,7 +762,7 @@ class EnumSubDomain(object):
             self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
         logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
 
-        total_subs = set(subs + dnspod_domains + transfer_info + ca_subdomains)
+        total_subs = set(subs + transfer_info + ca_subdomains)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
@@ -784,7 +775,7 @@ class EnumSubDomain(object):
 
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
-            total_subs = set(subs + dnspod_domains + transfer_info + ca_subdomains)
+            total_subs = set(subs + transfer_info + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
             logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(
                 datetime.timedelta(seconds=time_consume_dns))))
