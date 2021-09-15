@@ -79,15 +79,11 @@ class DNSQuery(object):
 
         for sub in subs:
             sub = ''.join(sub.rsplit(suffix, 1)).rstrip('.')
-            self.sub_domains.append('{sub}.{domain}'.format(sub=sub, domain=suffix))
+            self.sub_domains.append(f'{sub}.{suffix}')
 
     def dns_query(self):
-        """
-        soa,txt,mx,aaaa
-        :param sub:
-        :return:
-        """
         final_list = []
+        soa = aaaa = txt = mx = []
         for subdomain in self.sub_domains:
             try:
                 soa = []
@@ -96,19 +92,19 @@ class DNSQuery(object):
                     soa.append(str(a.rname).strip('.'))
                     soa.append(str(a.mname).strip('.'))
             except Exception as e:
-                logger.warning('Query failed. {e}'.format(e=str(e)))
+                logger.warning(f'Query failed. {str(e)}')
             try:
                 aaaa = []
                 q_aaaa = dns.resolver.resolve(subdomain, 'AAAA')
                 aaaa = [str(a.address).strip('.') for a in q_aaaa]
             except Exception as e:
-                logger.warning('Query failed. {e}'.format(e=str(e)))
+                logger.warning(f'Query failed. {str(e)}')
             try:
                 txt = []
                 q_txt = dns.resolver.resolve(subdomain, 'TXT')
                 txt = [t.strings[0].decode('utf-8').strip('.') for t in q_txt]
             except Exception as e:
-                logger.warning('Query failed. {e}'.format(e=str(e)))
+                logger.warning(f'Query failed. {str(e)}')
             try:
                 mx = []
                 q_mx = dns.resolver.resolve(subdomain, 'MX')
@@ -213,11 +209,8 @@ class CAInfo(object):
 
 class EnumSubDomain(object):
     def __init__(self, domain, response_filter=None, dns_servers=None, skip_rsc=False, debug=False,
-                 split=None, proxy={}, multiresolve=False):
+                 split=None, proxy=None, multiresolve=False):
         self.project_directory = os.path.abspath(os.path.dirname(__file__))
-        logger.info('Version: {v}'.format(v=__version__))
-        logger.info('----------')
-        logger.info('Start domain: {d}'.format(d=domain))
         self.proxy = proxy
         self.data = {}
         self.domain = domain
@@ -302,15 +295,20 @@ class EnumSubDomain(object):
         :param line:
         :return:
         """
+        # 根据RFC 1034/1035规定，域名中仅允许出现字母、数字和横杠（-）
         letter_count = line.count('{letter}')
         number_count = line.count('{number}')
-        letters = itertools.product(string.ascii_lowercase, repeat=letter_count)
+        letters = itertools.product(string.ascii_lowercase + '-', repeat=letter_count)
         letters = [''.join(l) for l in letters]
         numbers = itertools.product(string.digits, repeat=number_count)
         numbers = [''.join(n) for n in numbers]
         for l in letters:
             iter_line = line.replace('{letter}' * letter_count, l)
-            self.general_dicts.append(iter_line)
+            # 根据RFC 1034/1035规定，子域名的头部和尾部不允许出现横杠（-），中间不允许连续出现横杠（-）
+            iter_line = iter_line.strip('-')
+            iter_line = re.sub(r'-+', '-', iter_line)
+            if iter_line != '':
+                self.general_dicts.append(iter_line)
         number_dicts = []
         for gd in self.general_dicts:
             for n in numbers:
@@ -354,8 +352,7 @@ class EnumSubDomain(object):
             dicts_count = int(s[1])
             dicts_every = int(math.ceil(len(dicts) / dicts_count))
             dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
-            logger.info(
-                'Sub domain dict split {count} and get {choose}st'.format(count=dicts_count, choose=dicts_choose))
+            logger.info(f'Sub domain dict split {dicts_count} and get {dicts_choose}st')
 
         # root domain
         dicts.append('@')
@@ -374,7 +371,7 @@ class EnumSubDomain(object):
             sub_domain = self.domain
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
-            sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+            sub_domain = f'{sub}.{self.domain}'
         # 如果存在特定异常则进行重试
         for i in range(4):
             try:
@@ -407,18 +404,15 @@ class EnumSubDomain(object):
                     self.wildcard_ips)):
                     if self.skip_rsc:
                         logger.debug(
-                            '{sub} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results'.format(
-                                sub=sub_domain))
+                            f'{sub_domain} maybe wildcard subdomain, but it is --skip-rsc mode now, it will be drop this subdomain in results')
                     else:
-                        logger.debug(
-                            '{r} maybe wildcard domain, continue RSC {sub}'.format(r=self.remainder, sub=sub_domain,
-                                                                                   ips=domain_ips))
+                        logger.debug(f'{self.remainder} maybe wildcard domain, continue RSC {sub_domain}')
                 else:
                     if sub != self.wildcard_sub:
                         self.data[sub_domain] = sorted(domain_ips)
                         print('', end='\n')
                         self.count += 1
-                        logger.info('{r} {sub} {ips}'.format(r=self.remainder, sub=sub_domain, ips=domain_ips))
+                        logger.info(f'{self.remainder} {len(self.data)} {sub_domain} {domain_ips}')
             break
         self.remainder += -1
         return sub_domain, ret
@@ -481,7 +475,7 @@ class EnumSubDomain(object):
                     return await response.text(), response.history
         except Exception as e:
             # TODO 当在随机DNS场景中只做响应相似度比对的话，如果域名没有Web服务会导致相似度比对失败从而丢弃
-            logger.warning('fetch exception: {e} {u}'.format(e=type(e).__name__, u=url))
+            logger.warning(f'fetch exception: {type(e).__name__} {url}')
             return None, None
 
     async def similarity(self, sub):
@@ -495,11 +489,11 @@ class EnumSubDomain(object):
             sub_domain = self.domain
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
-            sub_domain = '{sub}.{domain}'.format(sub=sub, domain=self.domain)
+            sub_domain = f'{sub}.{self.domain}'
 
         if sub_domain in self.domains_rs:
             self.domains_rs.remove(sub_domain)
-        full_domain = 'http://{sub_domain}'.format(sub_domain=sub_domain)
+        full_domain = f'http://{sub_domain}'
         # 如果跳转中的域名是以下情况则不加入下一轮RSC
         skip_domain_with_history = [
             # 跳到主域名了
@@ -529,7 +523,7 @@ class EnumSubDomain(object):
                             location = location
                         status = history[-1].status
                         if location in skip_domain_with_history and len(history) >= 2:
-                            logger.debug('domain in skip: {s} {r} {l}'.format(s=sub_domain, r=status, l=location))
+                            logger.debug(f'domain in skip: {sub_domain} {status} {location}')
                             return
                         else:
                             # cnsuning.com suning.com
@@ -538,23 +532,22 @@ class EnumSubDomain(object):
                                 if sub_domain != location and location not in self.domains_rs and location not in self.domains_rs_processed:
                                     print('', end='\n')
                                     logger.info(
-                                        '[{sd}] add redirect domain: {l}({len})'.format(sd=sub_domain, l=location,
-                                                                                        len=len(self.domains_rs)))
+                                        f'[{sub_domain}] add redirect domain: {location}({len(self.domains_rs)})')
                                     self.domains_rs.append(location)
                                     self.domains_rs_processed.append(location)
                             else:
                                 print('', end='\n')
-                                logger.info('not same domain: {l}'.format(l=location))
+                                logger.info(f'not same domain: {location}')
                     else:
                         print('', end='\n')
-                        logger.info('not domain(maybe path): {l}'.format(l=location))
+                        logger.info(f'not domain(maybe path): {location}')
                 if html is None:
                     print('', end='\n')
-                    logger.warning('domain\'s html is none: {s}'.format(s=sub_domain))
+                    logger.warning(f'domain\'s html is none: {sub_domain}')
                     return
                 # collect response html's domains
                 response_domains = re.findall(regex_domain, html)
-                response_domains = list(set(response_domains) - set([sub_domain]))
+                response_domains = list(set(response_domains) - {sub_domain})
                 for rd in response_domains:
                     rd = rd.strip().strip('.')
                     if rd.count('.') >= sub_domain.count('.') and rd[-len(sub_domain):] == sub_domain:
@@ -562,8 +555,7 @@ class EnumSubDomain(object):
                     if rd not in self.domains_rs:
                         if rd not in self.domains_rs_processed:
                             print('', end='\n')
-                            logger.info('[{sd}] add response domain: {s}({l})'.format(sd=sub_domain, s=rd,
-                                                                                      l=len(self.domains_rs)))
+                            logger.info(f'[{sub_domain}] add response domain: {rd}({len(self.domains_rs)})')
                             self.domains_rs.append(rd)
                             self.domains_rs_processed.append(rd)
 
@@ -582,8 +574,7 @@ class EnumSubDomain(object):
                 self.remainder += -1
                 if ratio > self.rsc_ratio:
                     # passed
-                    logger.debug(
-                        '{r} RSC ratio: {ratio} (passed) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    logger.debug(f'{self.remainder} RSC ratio: {ratio} (passed) {sub_domain}')
                 else:
                     # added
                     # for def distinct func
@@ -591,8 +582,7 @@ class EnumSubDomain(object):
                     if self.response_filter is not None:
                         for resp_filter in self.response_filter.split(','):
                             if resp_filter in html:
-                                logger.debug('{r} RSC filter in response (passed) {sub}'.format(r=self.remainder,
-                                                                                                sub=sub_domain))
+                                logger.debug(f'{self.remainder} RSC filter in response (passed) {sub_domain}')
                                 return
                             else:
                                 continue
@@ -600,8 +590,7 @@ class EnumSubDomain(object):
                     else:
                         self.data[sub_domain] = self.wildcard_ips
                     print('', end='\n')
-                    logger.info(
-                        '{r} RSC ratio: {ratio} (added) {sub}'.format(r=self.remainder, sub=sub_domain, ratio=ratio))
+                    logger.info(f'{self.remainder} RSC ratio: {ratio} (added) {sub_domain}')
         except Exception as e:
             logger.debug(traceback.format_exc())
             return
@@ -617,10 +606,10 @@ class EnumSubDomain(object):
                     m = 'Remove'
                 else:
                     m = 'Stay'
-                logger.info('{d} : {d2} {ratio} {m}'.format(d=domain, d2=domain2, ratio=ratio, m=m))
+                logger.info(f'{domain} : {domain2} {ratio} {m}')
 
     def check(self, dns):
-        logger.info("Checking if DNS server {dns} is available".format(dns=dns))
+        logger.info(f"Checking if DNS server {dns} is available")
         msg = b'\x5c\x6d\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03www\x05baidu\x03com\x00\x00\x01\x00\x01'
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(3)
@@ -630,7 +619,7 @@ class EnumSubDomain(object):
             3: 'third'
         }
         for i in range(3):
-            logger.info("Sending message to DNS server a {times} time".format(times=repeat[i + 1]))
+            logger.info(f"Sending message to DNS server a {repeat[i + 1]} time")
             sock.sendto(msg, (dns, 53))
             try:
                 sock.recv(4096)
@@ -646,9 +635,12 @@ class EnumSubDomain(object):
         Run
         :return:
         """
+        logger.info(f'Version: {__version__}')
+        logger.info('----------')
+        logger.info(f'Start domain: {self.domain}')
         start_time = time.time()
         subs = self.load_sub_domain_dict()
-        logger.info('Sub domain dict count: {c}'.format(c=len(subs)))
+        logger.info(f'Sub domain dict count: {len(subs)}')
         logger.info('Generate coroutines...')
         # Verify that all DNS server results are consistent
         stable_dns = []
@@ -658,12 +650,12 @@ class EnumSubDomain(object):
         for dns in self.dns_servers:
             delay = self.check(dns)
             if not delay:
-                logger.warning("@{dns} is not available, skip this DNS server".format(dns=dns))
+                logger.warning(f"@{dns} is not available, skip this DNS server")
                 continue
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
-            logger.info('@{dns} {sub} {ips}'.format(dns=dns, sub=sub, ips=ret))
+            logger.info(f'@{dns} {sub} {ret}')
             if ret is None:
                 ret = None
             else:
@@ -700,22 +692,21 @@ class EnumSubDomain(object):
                 self.wildcard_ips = wildcard_ips
             else:
                 self.wildcard_ips = stable_dns[0]
-            logger.info('Wildcard IPS: {ips}'.format(ips=self.wildcard_ips))
+            logger.info(f'Wildcard IPS: {self.wildcard_ips}')
             if not self.skip_rsc:
                 try:
                     self.wildcard_html = requests.get(
-                        'http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub, domain=self.domain),
+                        f'http://{self.wildcard_sub}.{self.domain}',
                         headers=self.request_headers, timeout=10, verify=False).text
                     self.wildcard_html = self.data_clean(self.wildcard_html)
                     self.wildcard_html_len = len(self.wildcard_html)
                     self.wildcard_html3 = requests.get(
-                        'http://{w_sub}.{domain}'.format(w_sub=self.wildcard_sub3, domain=self.domain),
+                        f'http://{self.wildcard_sub3}.{self.domain}',
                         headers=self.request_headers, timeout=10, verify=False).text
                     self.wildcard_html3 = self.data_clean(self.wildcard_html3)
                     self.wildcard_html3_len = len(self.wildcard_html3)
                     logger.info(
-                        'Wildcard domain response html length: {len} 3length: {len2}'.format(len=self.wildcard_html_len,
-                                                                                             len2=self.wildcard_html3_len))
+                        f'Wildcard domain response html length: {self.wildcard_html_len} 3length: {self.wildcard_html3_len}')
                 except requests.exceptions.SSLError:
                     logger.warning('SSL Certificate Error!')
                 except requests.exceptions.ConnectTimeout:
@@ -724,10 +715,7 @@ class EnumSubDomain(object):
                     self.wildcard_html = self.wildcard_html3 = ''
                     self.wildcard_html_len = self.wildcard_html3_len = 0
                     logger.warning(
-                        'Request response content timeout, {w_sub}.{domain} and {w_sub3}.{domain} maybe not a http service, content will be set to blank!'.format(
-                            w_sub=self.wildcard_sub,
-                            domain=self.domain,
-                            w_sub3=self.wildcard_sub3))
+                        f'Request response content timeout, {self.wildcard_sub}.{self.domain} and {self.wildcard_sub3}.{self.domain} maybe not a http service, content will be set to blank!')
                 except requests.exceptions.ConnectionError:
                     logger.error('ESD can\'t get the response text so the rsc will be skipped. ')
                     self.skip_rsc = True
@@ -738,7 +726,7 @@ class EnumSubDomain(object):
             self.coroutine_count = self.coroutine_count_dns
             tasks = (self.query(sub) for sub in subs)
             self.loop.run_until_complete(self.start(tasks, len(subs)))
-            logger.info("Brute Force subdomain count: {total}".format(total=self.count))
+            logger.info(f"Brute Force subdomain count: {self.count}")
         dns_time = time.time()
         time_consume_dns = int(dns_time - start_time)
         logger.info(f'DNS query errors: {self.dns_query_errors}')
@@ -750,17 +738,17 @@ class EnumSubDomain(object):
         if len(ca_subdomains):
             tasks = (self.query(sub) for sub in ca_subdomains)
             self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
-        logger.info('CA subdomain count: {c}'.format(c=len(ca_subdomains)))
+        logger.info(f'CA subdomain count: {len(ca_subdomains)}')
 
         # DNS Transfer Vulnerability
         transfer_info = []
-        logger.info('Check DNS Transfer Vulnerability in {domain}'.format(domain=self.domain))
+        logger.info(f'Check DNS Transfer Vulnerability in {self.domain}')
         transfer_info = DNSTransfer(self.domain).transfer_info()
         if len(transfer_info):
-            logger.warning('DNS Transfer Vulnerability found in {domain}!'.format(domain=self.domain))
+            logger.warning(f'DNS Transfer Vulnerability found in {self.domain}!')
             tasks = (self.query(sub) for sub in transfer_info)
             self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
-        logger.info('DNS Transfer subdomain count: {c}'.format(c=len(transfer_info)))
+        logger.info(f'DNS Transfer subdomain count: {len(transfer_info)}')
 
         total_subs = set(subs + transfer_info + ca_subdomains)
 
@@ -771,18 +759,16 @@ class EnumSubDomain(object):
             record_info = dnsquery.dns_query()
             tasks = (self.query(record[:record.find('.')]) for record in record_info)
             self.loop.run_until_complete(self.start(tasks, len(record_info)))
-            logger.info('DNS record subdomain count: {c}'.format(c=len(record_info)))
+            logger.info(f'DNS record subdomain count: {len(record_info)}')
 
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
             total_subs = set(subs + transfer_info + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
-            logger.info('Enumerates {len} sub domains by DNS mode in {tcd}.'.format(len=len(self.data), tcd=str(
-                datetime.timedelta(seconds=time_consume_dns))))
             logger.info(
-                'Will continue to test the distinct({len_subs}-{len_exist})={len_remain} domains used by RSC, the speed will be affected.'.format(
-                    len_subs=len(subs), len_exist=len(self.data),
-                    len_remain=len(self.wildcard_subs)))
+                f'Enumerates {len(self.data)} sub domains by DNS mode in {str(datetime.timedelta(seconds=time_consume_dns))}')
+            logger.info(
+                f'Will continue to test the distinct({len(subs)}-{len(self.data)})={len(self.wildcard_subs)} domains used by RSC, the speed will be affected.')
             self.coroutine_count = self.coroutine_count_request
             self.remainder = len(self.wildcard_subs)
             tasks = (self.similarity(sub) for sub in self.wildcard_subs)
@@ -793,10 +779,10 @@ class EnumSubDomain(object):
             # self.distinct()
 
             time_consume_request = int(time.time() - dns_time)
-            logger.info('Requests time consume {tcr}'.format(tcr=str(datetime.timedelta(seconds=time_consume_request))))
+            logger.info(f'Requests time consume {str(datetime.timedelta(seconds=time_consume_request))}')
         # RS(redirect/response) domains
         while len(self.domains_rs) != 0:
-            logger.info('RS(redirect/response) domains({l})...'.format(l=len(self.domains_rs)))
+            logger.info(f'RS(redirect/response) domains({len(self.domains_rs)})...')
             tasks = (self.similarity(''.join(domain.rsplit(self.domain, 1)).rstrip('.')) for domain in self.domains_rs)
 
             self.loop.run_until_complete(self.start(tasks, len(self.domains_rs)))
@@ -805,10 +791,8 @@ class EnumSubDomain(object):
         tmp_dir = '/tmp/esd'
         if not os.path.isdir(tmp_dir):
             os.mkdir(tmp_dir, 0o777)
-        output_path_with_time = '{td}/.{domain}_{time}.esd'.format(td=tmp_dir, domain=self.domain,
-                                                                   time=datetime.datetime.now().strftime(
-                                                                       "%Y-%m_%d_%H-%M"))
-        output_path = '{td}/.{domain}.esd'.format(td=tmp_dir, domain=self.domain)
+        output_path_with_time = f'{tmp_dir}/.{self.domain}_{datetime.datetime.now().strftime("%Y-%m_%d_%H-%M")}.esd'
+        output_path = f'{tmp_dir}/.{self.domain}.esd'
         if len(self.data):
             max_domain_len = max(map(len, self.data)) + 2
         else:
@@ -827,11 +811,11 @@ class EnumSubDomain(object):
                 op.write(con)
                 opt.write(con)
 
-        logger.info('Output: {op}'.format(op=output_path))
-        logger.info('Output with time: {op}'.format(op=output_path_with_time))
-        logger.info('Total domain: {td}'.format(td=len(self.data)))
+        logger.info(f'Output: {output_path}')
+        logger.info(f'Output with time: {output_path_with_time}')
+        logger.info(f'Total domain: {len(self.data)}')
         time_consume = int(time.time() - start_time)
-        logger.info('Time consume: {tc}'.format(tc=str(datetime.timedelta(seconds=time_consume))))
+        logger.info(f'Time consume: {str(datetime.timedelta(seconds=time_consume))}')
         return self.data
 
 
@@ -874,7 +858,7 @@ def main():
             logger.error('Invaild split parameter,can not split the dict')
             split = None
     except:
-        logger.error('Split validation failed: {d}'.format(d=split_list))
+        logger.error(f'Split validation failed: {split_list}')
         exit(0)
 
     if options.proxy:
@@ -892,7 +876,7 @@ def main():
             if len(re_domain) > 0 and re_domain[0][0] == p:
                 domains.append(p.strip())
             else:
-                logger.error('Domain validation failed: {d}'.format(d=p))
+                logger.error(f'Domain validation failed: {p}')
     elif options.input and os.path.isfile(options.input):
         with open(options.input) as fh:
             for line_domain in fh:
@@ -901,7 +885,7 @@ def main():
                 if len(re_domain) > 0 and re_domain[0][0] == line_domain:
                     domains.append(line_domain)
                 else:
-                    logger.error('Domain validation failed: {d}'.format(d=line_domain))
+                    logger.error(f'Domain validation failed: {line_domain}')
     else:
         logger.error('Please input vaild parameter. ie: "esd -d feei.cn" or "esd -f /Users/root/domains.txt"')
 
@@ -909,10 +893,10 @@ def main():
         debug = os.environ['esd']
     else:
         debug = False
-    logger.info('Debug: {d}'.format(d=debug))
-    logger.info('--skip-rsc: {rsc}'.format(rsc=skip_rsc))
+    logger.info(f'Debug: {debug}')
+    logger.info(f'--skip-rsc: {skip_rsc}')
 
-    logger.info('Total target domains: {ttd}'.format(ttd=len(domains)))
+    logger.info(f'Total target domains: {len(domains)}')
     try:
         for d in domains:
             esd = EnumSubDomain(d, response_filter, skip_rsc=skip_rsc, debug=debug, split=split,
