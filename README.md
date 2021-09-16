@@ -25,13 +25,8 @@
 > 融合各类字典，去重后共620328条子域名字典
 
 - 通用字典
-    - 单字母、单字母+单数字、双字母、双字母+单数字、双字母+双数字、三字母、四字母
-    - 单数字、双数字、三数字
 - 域名解析商公布使用最多的子域名
-    - DNSPod: dnspod-top2000-sub-domains.txt
 - 其它域名爆破工具字典
-    - subbrute: names_small.txt
-    - subDomainsBrute: subnames_full.txt
 
 #### 更多的收集渠道
 - [X] 收集DNSPod接口泄露的子域名
@@ -47,46 +42,16 @@
 - 根据网络情况自动剔除无效DNS，提高枚举成功率
 
 ## 使用
-仅在macOS、Linux的Python3下验证过
+
 ```bash
 # 安装
 pip install esd
-
-# 升级
-pip install esd --upgrade
 ```
+
 **CLI命令行使用**
 ```bash
 # 扫描单个域名
 esd -d qq.com
-
-# debug模式扫描单个域名
-esd=debug esd -d qq.com
-
-# 扫描多个域名（英文逗号分隔）
-esd --domain qq.com,tencent.com
-
-# 扫描单个域名且过滤子域名中单个特定响应内容
-esd --domain mogujie.com --filter 搜本店
-
-# 扫描单个域名且过滤子域名中多个特定响应内容
-esd --domain mogujie.com --filter 搜本店,收藏店铺
-
-# 扫描文件（文件中每行一个域名）
-esd --file targets.txt
-
-# 跳过相似度对比（开启这个选项会把所有泛解析的域名都过滤掉）
-esd --domain qq.com --skip-rsc
-
-# 平均分割字典，加快爆破
-esd --domain qq.com --split 1/4
-
-# 使用DNS域传送漏洞获取子域名
-esd --domain qq.com --dns-transfer
-
-# 使用HTTPS证书透明度获取子域名
-esd --domain qq.com --ca-info
-
 ```
 
 **程序调用**
@@ -95,9 +60,5 @@ from ESD import EnumSubDomain
 domains = EnumSubDomain('feei.cn').run()
 ```
 
-## 后续
-- 提升扫描速度
-- 支持三级子域名，多种组合更多可能性
-
 ## 文档
-- https://github.com/FeeiCN/ESD/wiki
+- https://yuque.com/esd
