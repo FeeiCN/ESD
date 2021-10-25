@@ -11,7 +11,6 @@ class DNSTransfer(object):
             nss = dns.resolver.resolve(self.domain, 'NS')
             nameservers = [str(ns) for ns in nss]
             ns_addr = dns.resolver.resolve(nameservers[0], 'A')
-            # dnspython 的 bug，需要设置 lifetime 参数
             zones = dns.zone.from_xfr(dns.query.xfr(ns_addr, self.domain, relativize=False, timeout=2, lifetime=2),
                                       check_origin=False)
             names = zones.nodes.keys()

@@ -1,16 +1,3 @@
-# -*- coding: utf-8 -*-
-
-"""
-    ESD
-    ~~~
-
-    Implements enumeration sub domains
-
-    :author:    Feei <feei@feei.cn>
-    :homepage:  https://github.com/FeeiCN/ESD
-    :license:   GPL, see LICENSE for more details.
-    :copyright: Copyright (c) 2018 Feei. All rights reserved
-"""
 import os
 import re
 import time
@@ -76,8 +63,7 @@ logger.setLevel(logging.INFO)
 ssl.match_hostname = lambda cert, hostname: True
 
 
-# 只采用了递归，速度非常慢，在优化完成前不建议开启
-# TODO:优化DNS查询，递归太慢了
+# TODO: Improves DNS Qeury, The recursion is too slow
 class DNSQuery(object):
     def __init__(self, root_domain, subs, suffix):
         # root domain
@@ -129,7 +115,6 @@ class DNSQuery(object):
                 else:
                     domain_list.remove(p)
             final_list = domain_list + final_list
-        # 递归调用，在子域名的dns记录中查找新的子域名
         recursive = []
         # print("before: {0}".format(final_list))
         # print("self.sub_domain: {0}".format(self.sub_domains))
@@ -153,10 +138,12 @@ class EnumSubDomain(object):
         self.multiresolve = multiresolve
         self.stable_dns_servers = ['119.29.29.29']
         if dns_servers is None:
-            # 除了DNSPod外，其它的都不适合作为稳定的DNS
-            # 要么并发会显著下降，要么就完全不能用
+            # DNS Server has huge impact on the accuracy of the results.
+            # Only DNSPod is suitable as a stable DNS server in CHINA.
+            # Other DNS Service are either extremely slow, don't support high concurrency, or have incorrect results.
+            # TODO add automation select DNS server in anywhere
             dns_servers = [
-                # DNS对结果准确性影响非常大，部分DNS结果会和其它DNS结果不一致甚至没结果
+                #
                 # '223.5.5.5',  # AliDNS
                 # '114.114.114.114',  # 114DNS
                 # '1.1.1.1',  # Cloudflare
@@ -164,7 +151,7 @@ class EnumSubDomain(object):
                 # '180.76.76.76',  # BaiduDNS
                 # '1.2.4.8',  # sDNS
                 # '11.1.1.1'  # test DNS, not available
-                # '8.8.8.8', # Google DNS, 延时太高了
+                # '8.8.8.8', # Google DNS, slow in CHINA
             ]
 
         random.shuffle(dns_servers)
@@ -191,7 +178,7 @@ class EnumSubDomain(object):
         self.wildcard_domains = {}
         # Corotines count
         self.coroutine_count = None
-        # 并发太高DNS Server的错误会大幅增加
+        # DNS Server errors increases significantly if coroutine counts
         self.coroutine_count_dns = 1000
         self.coroutine_count_request = 100
         # dnsaio resolve timeout
@@ -236,18 +223,18 @@ class EnumSubDomain(object):
         else:
             sub = ''.join(sub.rsplit(self.domain, 1)).rstrip('.')
             sub_domain = f'{sub}.{self.domain}'
-        # 如果存在特定异常则进行重试
+        # Retry if special exceptions exists
         for i in range(4):
             try:
                 ret = await self.resolver.query(sub_domain, 'A')
             except aiodns.error.DNSError as e:
                 err_code, err_msg = e.args[0], e.args[1]
-                # 域名确实不存在
-                # 4:  Domain name not found
-                # 1:  DNS server returned answer with no data
-                # 其它情况都需要重试，否则存在很高的遗漏
-                # 11: Could not contact DNS servers
-                # 12: Timeout while contacting DNS servers
+                # This subdomain dns not exists
+                #  - 4:  Domain name not found
+                #  - 1:  DNS server returned answer with no data
+                # Other all need RETRY
+                #  - 11: Could not contact DNS servers
+                #  - 12: Timeout while contacting DNS servers
                 if err_code not in [1, 4]:
                     if i == 2:
                         logger.warning(f'Try {i + 1} times, but failed. {sub_domain} {e}')
@@ -685,8 +672,7 @@ class EnumSubDomain(object):
 
 def main():
     print(__banner__)
-    parser = OptionParser(
-        'Usage: esd -d feei.cn -F response_filter -p user:pass@host:port')
+    parser = OptionParser('Usage: esd -d feei.cn -F response_filter -p user:pass@host:port')
     parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
     parser.add_option('-f', '--file', dest='input', help='Import domains from this file')
     parser.add_option('-F', '--filter', dest='filter', help='Response filter')
@@ -698,13 +684,18 @@ def main():
                       help='Use TXT, AAAA, MX, SOA record to find subdomains', action='store_true', default=False)
     (options, args) = parser.parse_args()
 
-    domains = []
+    # Filter response
     response_filter = options.filter
+
+    # Is Skip RSC
     skip_rsc = options.skiprsc
-    split_list = options.split.split('/')
-    split = options.split
+    logger.info(f'--skip-rsc: {skip_rsc}')
+
     multiresolve = options.multiresolve
 
+    # Split dicts
+    split_list = options.split.split('/')
+    split = options.split
     try:
         if len(split_list) != 2 or int(split_list[0]) > int(split_list[1]):
             logger.error('Invaild split parameter,can not split the dict')
@@ -713,6 +704,7 @@ def main():
         logger.error(f'Split validation failed: {split_list}')
         exit(0)
 
+    # Proxy
     if options.proxy:
         proxy = {
             'http': 'socks5h://%s' % options.proxy,
@@ -721,6 +713,15 @@ def main():
     else:
         proxy = {}
 
+    # Debug mode
+    if 'esd' in os.environ:
+        debug = os.environ['esd']
+    else:
+        debug = False
+    logger.info(f'Debug: {debug}')
+
+    # Target domains
+    domains = []
     if options.domains is not None:
         for p in options.domains.split(','):
             p = p.strip().lower()
@@ -740,14 +741,6 @@ def main():
                     logger.error(f'Domain validation failed: {line_domain}')
     else:
         logger.error('Please input vaild parameter. ie: "esd -d feei.cn" or "esd -f /Users/root/domains.txt"')
-
-    if 'esd' in os.environ:
-        debug = os.environ['esd']
-    else:
-        debug = False
-    logger.info(f'Debug: {debug}')
-    logger.info(f'--skip-rsc: {skip_rsc}')
-
     logger.info(f'Total target domains: {len(domains)}')
     try:
         for d in domains:
@@ -756,10 +749,7 @@ def main():
                                 multiresolve=multiresolve)
             esd.run()
     except KeyboardInterrupt:
+        # Control-C Exit
         print('', end='\n')
         logger.info('Bye :)')
         exit(0)
-
-
-if __name__ == '__main__':
-    main()

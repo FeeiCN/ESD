@@ -18,7 +18,7 @@ class Dicts(object):
         :param line:
         :return:
         """
-        # 根据RFC 1034/1035规定，域名中仅允许出现字母、数字和横杠（-）
+        # According to RFC 1034/1035, Only letters, numbers and dashes(-) are allowed in domain name.
         letter_count = line.count('{letter}')
         number_count = line.count('{number}')
         letters = itertools.product(string.ascii_lowercase + '-', repeat=letter_count)
@@ -27,7 +27,7 @@ class Dicts(object):
         numbers = [''.join(n) for n in numbers]
         for l in letters:
             iter_line = line.replace('{letter}' * letter_count, l)
-            # 根据RFC 1034/1035规定，子域名的头部和尾部不允许出现横杠（-），中间不允许连续出现横杠（-）
+            # According RFC 1034/1035, subdomain not allowed to dashes(-) at the beginning and end.
             iter_line = iter_line.strip('-')
             iter_line = re.sub(r'-+', '-', iter_line)
             if iter_line != '':
