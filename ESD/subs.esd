@@ -1,40 +1,39 @@
-# 通用规则
+# Custom Dicts
 
-## 单字母，比如s.feei.cn
+## Single letter, e.g. s.feei.cn
 {letter}
 
-## 单字母+单数字，比如s1.feei.cn
+## Single letter&number, e.g. s1.feei.cn/1s.feei.cn
 {letter}{number}
 
-## 双字母，比如sd.feei.cn
+## Double letters, e.g. sd.feei.cn
 {letter}{letter}
 
-## 双字母+单数字，比如ss1.feei.cn
+## Double letters and single number, e.g. ss1.feei.cn
 {letter}{letter}{number}
 
-## 双字母+双数字，比如ss01.feei.cn
+## Double letters and double numbers, e.g. ss01.feei.cn
 {letter}{letter}{number}{number}
 
-## 三字母，比如clx.feei.cn
+## Tree letters, e.g. clx.feei.cn
 {letter}{letter}{letter}
 
-## 四字母，比如root.feei.cn
+## Four letters, e.g. root.feei.cn
 {letter}{letter}{letter}{letter}
 
-## 三字母双数字，比如clx01.feei.cn
-# 1757600种组合，太多了，暂时去掉
+## Three letters and Two numbers (counts 1757600), clx01.feei.cn
 # {letter}{letter}{letter}{number}{number}
 
-## 单数字，比如1.feei.cn
+## Single number, e.g. 1.feei.cn
 {number}
 
-## 双数字，比如10.feei.cn
+## Double number, e.g. 10.feei.cn
 {number}{number}
 
-## 三数字，比如666.feei.cn
+## Three number, e.g. 666.feei.cn
 {number}{number}{number}
 
-# 一般规则
+# General Dicts
 0
 000
 000999888
