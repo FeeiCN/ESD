@@ -163,8 +163,8 @@ class EnumSubDomain(object):
         self.is_wildcard_domain = False
         # Use a nonexistent domain name to determine whether
         # there is a pan-resolve based on the DNS resolution result
-        self.wildcard_sub = 'feei-esd-{random}'.format(random=random.randint(0, 9999))
-        self.wildcard_sub3 = 'feei-esd-{random}.{random}'.format(random=random.randint(0, 9999))
+        self.wildcard_sub = 'esd-no-exist-{random}'.format(random=random.randint(0, 9999))
+        self.wildcard_sub3 = 'esd-no-exist-{random}.{random}'.format(random=random.randint(0, 9999))
         # There is no domain name DNS resolution IP
         self.wildcard_ips = []
         # No domain name response HTML
@@ -490,29 +490,34 @@ class EnumSubDomain(object):
         logger.info('----------')
         logger.info(f'Start domain: {self.domain}')
         start_time = time.time()
+
+        # Get all subdomain dicts
         subs = Dicts(self.debug, self.split).load_sub_domain_dict()
         logger.info(f'Sub domain dict count: {len(subs)}')
         logger.info('Generate coroutines...')
-        # Verify that all DNS server results are consistent
+
+        # Set stable DNS server
         stable_dns = []
         wildcard_ips = None
         last_dns = []
         only_similarity = False
-        for dns in self.dns_servers:
-            delay = self.check(dns)
-            if not delay:
-                logger.warning(f"@{dns} is not available, skip this DNS server")
+        for dns_server in self.dns_servers:
+            available = self.check(dns_server)
+            if not available:
+                logger.warning(f"@{dns_server} is not available, skip this DNS server")
                 continue
-            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns], timeout=self.resolve_timeout)
+            self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns_server], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
             sub, ret = self.loop.run_until_complete(job)
-            logger.info(f'@{dns} {sub} {ret}')
+            logger.info(f'@{dns_server} {sub} {ret}')
             if ret is None:
+                # It's NOT a wildcard domain when query no exist subdomain
                 ret = None
             else:
+                # It's a wildcard domain when query no exist subdomain
                 ret = sorted(ret)
 
-            if dns in self.stable_dns_servers:
+            if dns_server in self.stable_dns_servers:
                 wildcard_ips = ret
             stable_dns.append(ret)
 
@@ -524,12 +529,12 @@ class EnumSubDomain(object):
                     break
                 else:
                     last_dns = ret
-
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
             logger.info('Is all stable dns: NO, use the default dns server')
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=self.stable_dns_servers,
                                                timeout=self.resolve_timeout)
+
         # Wildcard domain
         is_wildcard_domain = not (stable_dns.count(None) == len(stable_dns))
         if is_wildcard_domain or self.is_wildcard_domain:
