@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    DNSTransfer
-    ~~~~~~~~~~~
-
-    Implements get domains by DNS Transfer
-
-    :author:    Feei <feei@feei.cn>
-    :homepage:  https://github.com/FeeiCN/ESD
-    :license:   GPL, see LICENSE for more details.
-    :copyright: Copyright (c) 2018 Feei. All rights reserved
-"""
 import dns
 
 
@@ -17,7 +5,7 @@ class DNSTransfer(object):
     def __init__(self, domain):
         self.domain = domain
 
-    def transfer_info(self):
+    def run(self):
         ret_zones = list()
         try:
             nss = dns.resolver.resolve(self.domain, 'NS')

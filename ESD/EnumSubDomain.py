@@ -15,11 +15,8 @@ import os
 import re
 import time
 import ssl
-import math
-import string
 import random
 import traceback
-import itertools
 import datetime
 import colorlog
 import asyncio
@@ -41,6 +38,7 @@ from itertools import islice
 from difflib import SequenceMatcher
 from plugins.ca import CAInfo
 from plugins.dnstransfer import DNSTransfer
+from dicts import Dicts
 
 __version__ = '0.0.29'
 __banner__ = f"""\033[94m
@@ -224,76 +222,6 @@ class EnumSubDomain(object):
         self.domains_rs = []
         self.domains_rs_processed = []
         self.dns_query_errors = 0
-
-    def generate_general_dicts(self, line):
-        """
-        Generate general subdomains dicts
-        :param line:
-        :return:
-        """
-        # 根据RFC 1034/1035规定，域名中仅允许出现字母、数字和横杠（-）
-        letter_count = line.count('{letter}')
-        number_count = line.count('{number}')
-        letters = itertools.product(string.ascii_lowercase + '-', repeat=letter_count)
-        letters = [''.join(l) for l in letters]
-        numbers = itertools.product(string.digits, repeat=number_count)
-        numbers = [''.join(n) for n in numbers]
-        for l in letters:
-            iter_line = line.replace('{letter}' * letter_count, l)
-            # 根据RFC 1034/1035规定，子域名的头部和尾部不允许出现横杠（-），中间不允许连续出现横杠（-）
-            iter_line = iter_line.strip('-')
-            iter_line = re.sub(r'-+', '-', iter_line)
-            if iter_line != '':
-                self.general_dicts.append(iter_line)
-        number_dicts = []
-        for gd in self.general_dicts:
-            for n in numbers:
-                iter_line = gd.replace('{number}' * number_count, n)
-                number_dicts.append(iter_line)
-        if len(number_dicts) > 0:
-            return number_dicts
-        else:
-            return self.general_dicts
-
-    def load_sub_domain_dict(self):
-        """
-        Load subdomains from files and dicts
-        :return:
-        """
-        dicts = []
-        if self.debug:
-            path = '{pd}/subs-test.esd'.format(pd=self.project_directory)
-        else:
-            path = '{pd}/subs.esd'.format(pd=self.project_directory)
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip().lower()
-                # skip comments and space
-                if '#' in line or line == '':
-                    continue
-                if '{letter}' in line or '{number}' in line:
-                    self.general_dicts = []
-                    dicts_general = self.generate_general_dicts(line)
-                    dicts += dicts_general
-                else:
-                    # compatibility other dicts
-                    line = line.strip('.')
-                    dicts.append(line)
-        dicts = list(set(dicts))
-
-        # split dict
-        if self.split is not None:
-            s = self.split.split('/')
-            dicts_choose = int(s[0])
-            dicts_count = int(s[1])
-            dicts_every = int(math.ceil(len(dicts) / dicts_count))
-            dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
-            logger.info(f'Sub domain dict split {dicts_count} and get {dicts_choose}st')
-
-        # root domain
-        dicts.append('@')
-
-        return dicts
 
     async def query(self, sub):
         """
@@ -575,7 +503,7 @@ class EnumSubDomain(object):
         logger.info('----------')
         logger.info(f'Start domain: {self.domain}')
         start_time = time.time()
-        subs = self.load_sub_domain_dict()
+        subs = Dicts(self.debug, self.split).load_sub_domain_dict()
         logger.info(f'Sub domain dict count: {len(subs)}')
         logger.info('Generate coroutines...')
         # Verify that all DNS server results are consistent
@@ -670,23 +598,23 @@ class EnumSubDomain(object):
         # CA subdomain info
         ca_subdomains = []
         logger.info('Collect subdomains in CA...')
-        ca_subdomains = CAInfo(self.domain).get_subdomains()
+        ca_subdomains = CAInfo(self.domain).run()
         if len(ca_subdomains):
             tasks = (self.query(sub) for sub in ca_subdomains)
             self.loop.run_until_complete(self.start(tasks, len(ca_subdomains)))
         logger.info(f'CA subdomain count: {len(ca_subdomains)}')
 
         # DNS Transfer Vulnerability
-        transfer_info = []
+        dns_transfer_subdomains = []
         logger.info(f'Check DNS Transfer Vulnerability in {self.domain}')
-        transfer_info = DNSTransfer(self.domain).transfer_info()
-        if len(transfer_info):
+        dns_transfer_subdomains = DNSTransfer(self.domain).run()
+        if len(dns_transfer_subdomains):
             logger.warning(f'DNS Transfer Vulnerability found in {self.domain}!')
-            tasks = (self.query(sub) for sub in transfer_info)
-            self.loop.run_until_complete(self.start(tasks, len(transfer_info)))
-        logger.info(f'DNS Transfer subdomain count: {len(transfer_info)}')
+            tasks = (self.query(sub) for sub in dns_transfer_subdomains)
+            self.loop.run_until_complete(self.start(tasks, len(dns_transfer_subdomains)))
+        logger.info(f'DNS Transfer subdomain count: {len(dns_transfer_subdomains)}')
 
-        total_subs = set(subs + transfer_info + ca_subdomains)
+        total_subs = set(subs + dns_transfer_subdomains + ca_subdomains)
 
         # Use TXT,SOA,MX,AAAA record to find sub domains
         if self.multiresolve:
@@ -699,7 +627,7 @@ class EnumSubDomain(object):
 
         if self.is_wildcard_domain and not self.skip_rsc:
             # Response similarity comparison
-            total_subs = set(subs + transfer_info + ca_subdomains)
+            total_subs = set(subs + dns_transfer_subdomains + ca_subdomains)
             self.wildcard_subs = list(set(subs).union(total_subs))
             logger.info(
                 f'Enumerates {len(self.data)} sub domains by DNS mode in {str(datetime.timedelta(seconds=time_consume_dns))}')

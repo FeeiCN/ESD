@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    CA
-    ~~
-
-    Implements get domains by CA
-
-    :author:    Feei <feei@feei.cn>
-    :homepage:  https://github.com/FeeiCN/ESD
-    :license:   GPL, see LICENSE for more details.
-    :copyright: Copyright (c) 2018 Feei. All rights reserved
-"""
 import os
 import asyncio
 import aiodns
@@ -35,7 +23,7 @@ class CAInfo(object):
         s = socket.socket()
         s.settimeout(2)
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        cert_path = os.path.join(base_dir, '/cacert.pem')
+        cert_path = os.path.join(base_dir, 'cacert.pem')
         if not os.path.isfile(cert_path):
             print(f'error file path: {cert_path}')
         connect = ssl.wrap_socket(s, cert_reqs=ssl.CERT_REQUIRED, ca_certs=cert_path)
@@ -59,7 +47,7 @@ class CAInfo(object):
 
         return domain_list
 
-    def get_subdomains(self):
+    def run(self):
         subs = list()
         subdomain_list = self.get_ca_domain_info()
         for sub in subdomain_list:
