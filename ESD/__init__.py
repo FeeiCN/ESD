@@ -42,6 +42,16 @@ from itertools import islice
 from difflib import SequenceMatcher
 
 __version__ = '0.0.29'
+__banner__ = f"""\033[94m
+     ______    _____   _____  
+    |  ____|  / ____| |  __ \ 
+    | |__    | (___   | |  | |
+    |  __|    \___ \  | |  | |
+    | |____   ____) | | |__| |
+    |______| |_____/  |_____/\033[0m\033[93m
+    ESD(Enumeration Sub Domains) v{__version__}\033[92m
+    GitHub: https://github.com/FeeiCN/ESD
+    """
 
 handler = colorlog.StreamHandler()
 formatter = colorlog.ColoredFormatter(
@@ -819,20 +829,8 @@ class EnumSubDomain(object):
         return self.data
 
 
-def banner():
-    print("""\033[94m
-     ______    _____   _____  
-    |  ____|  / ____| |  __ \ 
-    | |__    | (___   | |  | |
-    |  __|    \___ \  | |  | |
-    | |____   ____) | | |__| |
-    |______| |_____/  |_____/\033[0m\033[93m
-    Enumeration Sub Domains v%s\033[92m
-    """ % __version__)
-
-
 def main():
-    banner()
+    print(__banner__)
     parser = OptionParser(
         'Usage: esd -d feei.cn -F response_filter -p user:pass@host:port')
     parser.add_option('-d', '--domain', dest='domains', help='The domains that you want to enumerate')
