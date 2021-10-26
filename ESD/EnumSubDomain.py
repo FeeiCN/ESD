@@ -5,11 +5,9 @@ import ssl
 import random
 import traceback
 import datetime
-import colorlog
 import asyncio
 import aiodns
 import aiohttp
-import logging
 import requests
 import backoff
 import socket
@@ -26,6 +24,7 @@ from difflib import SequenceMatcher
 from plugins.ca import CAInfo
 from plugins.dnstransfer import DNSTransfer
 from dicts import Dicts
+from logger import logger
 
 __version__ = '0.0.29'
 __banner__ = f"""\033[94m
@@ -38,27 +37,6 @@ __banner__ = f"""\033[94m
     ESD(Enumeration Sub Domains) v{__version__}\033[92m
     GitHub: https://github.com/FeeiCN/ESD
 """
-
-handler = colorlog.StreamHandler()
-formatter = colorlog.ColoredFormatter(
-    '%(log_color)s%(asctime)s [%(name)s] [%(levelname)s] %(message)s%(reset)s',
-    datefmt=None,
-    reset=True,
-    log_colors={
-        'DEBUG': 'cyan',
-        'INFO': 'green',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'red,bg_white',
-    },
-    secondary_log_colors={},
-    style='%'
-)
-handler.setFormatter(formatter)
-
-logger = colorlog.getLogger('ESD')
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 ssl.match_hostname = lambda cert, hostname: True
 
@@ -204,7 +182,7 @@ class EnumSubDomain(object):
         # debug mode
         self.debug = debug
         if self.debug:
-            logger.setLevel(logging.DEBUG)
+            logger.setLevel(10)
         # collect redirecting domains and response domains
         self.domains_rs = []
         self.domains_rs_processed = []
@@ -492,6 +470,7 @@ class EnumSubDomain(object):
         start_time = time.time()
 
         # Get all subdomain dicts
+        logger.info('Generate dicts...')
         subs = Dicts(self.debug, self.split).load_sub_domain_dict()
         logger.info(f'Sub domain dict count: {len(subs)}')
         logger.info('Generate coroutines...')

@@ -3,46 +3,48 @@ import math
 import string
 import re
 import os
+from logger import logger
 
 
 class Dicts(object):
     def __init__(self, debug=False, split=None):
         self.debug = debug
         self.split = split
-        self.project_directory = os.path.abspath(os.path.dirname(__file__))
-        self.general_dicts = []
+        self.dicts_directory = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'dicts')
+        # According to RFC 1034/1035, Only letters, numbers and dashes(-) are allowed in domain name.
+        self.domain_whitelist_string = string.ascii_lowercase + '-' + string.digits
 
-    def generate_general_dicts(self, line):
+    @staticmethod
+    def generate_general_dicts(domain_string, subdomain_length):
         """
         Generate general subdomains dicts
-        :param line:
+        :param domain_string:
+        :param subdomain_length:
         :return:
         """
-        # Count letters of subdomain rule
-        letter_count = line.count('{letter}')
-        # According to RFC 1034/1035, Only letters, numbers and dashes(-) are allowed in domain name.
-        letters = itertools.product(string.ascii_lowercase + '-', repeat=letter_count)
-        letters = [''.join(l) for l in letters]
-        # Count numbers of subdomain rule
-        number_count = line.count('{number}')
-        numbers = itertools.product(string.digits, repeat=number_count)
-        numbers = [''.join(n) for n in numbers]
-        for l in letters:
-            iter_line = line.replace('{letter}' * letter_count, l)
-            # According RFC 1034/1035, subdomain not allowed to dashes(-) at the beginning and end.
-            iter_line = iter_line.strip('-')
-            iter_line = re.sub(r'-+', '-', iter_line)
-            if iter_line != '':
-                self.general_dicts.append(iter_line)
-        number_dicts = []
-        for gd in self.general_dicts:
-            for n in numbers:
-                iter_line = gd.replace('{number}' * number_count, n)
-                number_dicts.append(iter_line)
-        if len(number_dicts) > 0:
-            return number_dicts
-        else:
-            return self.general_dicts
+        # Iterable subdomains
+        subdomains = []
+        items = itertools.product(domain_string, repeat=subdomain_length)
+        for item in items:
+            item_string = ''.join(item)
+            # According RFC 1034/1035, subdomain not allowed continuous dashes(-) and dash at the beginning and end.
+            item_string = re.sub(r'-+', '-', item_string).strip('-')
+            if item_string != '' and item_string not in subdomains:
+                subdomains.append(item_string)
+        return subdomains
+
+    @staticmethod
+    def read_dicts_file(path):
+        dicts = []
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip().lower()
+                # skip comments and space
+                if '#' in line or line == '':
+                    continue
+                else:
+                    dicts.append(line)
+        return dicts
 
     def load_sub_domain_dict(self):
         """
@@ -50,25 +52,33 @@ class Dicts(object):
         :return:
         """
         dicts = []
+        # load dicts file
         if self.debug:
-            path = '{pd}/subs-test.esd'.format(pd=self.project_directory)
+            path = 'subs-test.esd'
+            full_path = os.path.join(self.dicts_directory, path)
+            lists = self.read_dicts_file(full_path)
+            dicts += list(set(lists))
+            logger.info(f'Load Dicts: {path} Count: {len(lists)}')
         else:
-            path = '{pd}/subs.esd'.format(pd=self.project_directory)
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip().lower()
-                # skip comments and space
-                if '#' in line or line == '':
-                    continue
-                if '{letter}' in line or '{number}' in line:
-                    self.general_dicts = []
-                    dicts_general = self.generate_general_dicts(line)
-                    dicts += dicts_general
-                else:
-                    # compatibility other dicts
-                    line = line.strip('.')
-                    dicts.append(line)
-        dicts = list(set(dicts))
+            for path in os.listdir(self.dicts_directory):
+                full_path = os.path.join(self.dicts_directory, path)
+                lists = self.read_dicts_file(full_path)
+                dicts += list(set(lists))
+                logger.info(f'Load Dicts: {path} Count: {len(lists)}')
+
+            # Generate general dicts
+            generate_dicts = self.generate_general_dicts(self.domain_whitelist_string, 1)
+            generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 2)
+            generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 3)
+            # generate_dicts += self.generate_general_dicts(string.ascii_lowercase, 4)
+            generate_dicts += self.generate_general_dicts(string.digits, 4)
+
+            logger.info(f'Load Dicts: generate_general.esd Count: {len(generate_dicts)}')
+
+            dicts += generate_dicts
+
+        # root domain
+        dicts.append('@')
 
         # split dict
         if self.split is not None:
@@ -77,9 +87,6 @@ class Dicts(object):
             dicts_count = int(s[1])
             dicts_every = int(math.ceil(len(dicts) / dicts_count))
             dicts = [dicts[i:i + dicts_every] for i in range(0, len(dicts), dicts_every)][dicts_choose - 1]
-            print(f'Sub domain dict split {dicts_count} and get {dicts_choose}st')
+            logger.info(f'Sub domain dict split {dicts_count} and get {dicts_choose}st')
 
-        # root domain
-        dicts.append('@')
-
-        return dicts
+        return list(set(dicts))
