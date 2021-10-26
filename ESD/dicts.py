@@ -18,11 +18,13 @@ class Dicts(object):
         :param line:
         :return:
         """
-        # According to RFC 1034/1035, Only letters, numbers and dashes(-) are allowed in domain name.
+        # Count letters of subdomain rule
         letter_count = line.count('{letter}')
-        number_count = line.count('{number}')
+        # According to RFC 1034/1035, Only letters, numbers and dashes(-) are allowed in domain name.
         letters = itertools.product(string.ascii_lowercase + '-', repeat=letter_count)
         letters = [''.join(l) for l in letters]
+        # Count numbers of subdomain rule
+        number_count = line.count('{number}')
         numbers = itertools.product(string.digits, repeat=number_count)
         numbers = [''.join(n) for n in numbers]
         for l in letters:

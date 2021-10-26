@@ -5,15 +5,21 @@
 
 ## Single letter&number, e.g. s1.feei.cn/1s.feei.cn
 {letter}{number}
+{number}{letter}
 
 ## Double letters, e.g. sd.feei.cn
 {letter}{letter}
 
 ## Double letters and single number, e.g. ss1.feei.cn
 {letter}{letter}{number}
+{letter}{number}{letter}
+{number}{letter}{letter}
 
 ## Double letters and double numbers, e.g. ss01.feei.cn
 {letter}{letter}{number}{number}
+{letter}{number}{letter}{number}
+{number}{letter}{letter}{number}
+{number}{number}{letter}{letter}
 
 ## Tree letters, e.g. clx.feei.cn
 {letter}{letter}{letter}
@@ -23,6 +29,10 @@
 
 ## Three letters and Two numbers (counts 1757600), clx01.feei.cn
 # {letter}{letter}{letter}{number}{number}
+# {letter}{letter}{number}{letter}{number}
+# {letter}{number}{letter}{letter}{number}
+# {number}{number}{letter}{letter}{letter}
+# {letter}{number}{number}{letter}{letter}
 
 ## Single number, e.g. 1.feei.cn
 {number}
