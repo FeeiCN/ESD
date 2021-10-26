@@ -54,7 +54,7 @@ class Dicts(object):
         dicts = []
         # load dicts file
         if self.debug:
-            path = 'subs-test.esd'
+            path = 'subs-test.txt'
             full_path = os.path.join(self.dicts_directory, path)
             lists = self.read_dicts_file(full_path)
             dicts += list(set(lists))
