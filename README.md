@@ -24,14 +24,17 @@
 #### 更全的字典
 > 融合各类字典，去重后共620328条子域名字典
 
-- 通用字典
-    - 单字母、单字母+单数字、双字母、双字母+单数字、双字母+双数字、三字母、四字母
-    - 单数字、双数字、三数字
+- 通用字典（符合域名规范RFC 1034/1035）
+    - 单字母、双字母、三字母
+    - 单数字、双数字、三数字、四数字
+    - 三位及以下的字母数字混合
 - 域名解析商公布使用最多的子域名
     - DNSPod: dnspod-top2000-sub-domains.txt
 - 其它域名爆破工具字典
-    - subbrute: names_small.txt
-    - subDomainsBrute: subnames_full.txt
+    - subbrute: names-small.txt
+    - subDomainsBrute: subnames-full.txt
+- 常用英文单词
+    - 4000-most-common-words.txt
 
 #### 更多的收集渠道
 - [X] 收集DNSPod接口泄露的子域名
