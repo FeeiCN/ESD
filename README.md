@@ -28,11 +28,14 @@
     - 单字母、双字母、三字母
     - 单数字、双数字、三数字、四数字
     - 三位及以下的字母数字混合
-- 域名解析商公布使用最多的子域名
+- 相关机构或个人分析的使用最多的子域名
     - DNSPod: dnspod-top2000-sub-domains.txt
+    - CT-subdomains: top-100000.txt
 - 其它域名爆破工具字典
     - subbrute: names-small.txt
     - subDomainsBrute: subnames-full.txt
+    - Sublist3r: names.txt
+    - theHarvester: dns-big.txt
 - 常用英文单词
     - 4000-most-common-words.txt
 
