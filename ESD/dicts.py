@@ -43,7 +43,10 @@ class Dicts(object):
                 if '#' in line or line == '':
                     continue
                 else:
-                    dicts.append(line)
+                    if re.match(r'^[\d\w\-\.]+$', line) is not None:
+                        dicts.append(line)
+                    else:
+                        logger.debug(f'Subdomain {line} has except char')
         return dicts
 
     def load_sub_domain_dict(self):
@@ -53,29 +56,22 @@ class Dicts(object):
         """
         dicts = []
         # load dicts file
-        if self.debug:
-            path = 'subs-test.txt'
+        for path in os.listdir(self.dicts_directory):
             full_path = os.path.join(self.dicts_directory, path)
             lists = self.read_dicts_file(full_path)
             dicts += list(set(lists))
             logger.info(f'Load Dicts: {path} Count: {len(lists)}')
-        else:
-            for path in os.listdir(self.dicts_directory):
-                full_path = os.path.join(self.dicts_directory, path)
-                lists = self.read_dicts_file(full_path)
-                dicts += list(set(lists))
-                logger.info(f'Load Dicts: {path} Count: {len(lists)}')
 
-            # Generate general dicts
-            generate_dicts = self.generate_general_dicts(self.domain_whitelist_string, 1)
-            generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 2)
-            generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 3)
-            # generate_dicts += self.generate_general_dicts(string.ascii_lowercase, 4)
-            generate_dicts += self.generate_general_dicts(string.digits, 4)
+        # Generate general dicts
+        generate_dicts = self.generate_general_dicts(self.domain_whitelist_string, 1)
+        generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 2)
+        generate_dicts += self.generate_general_dicts(self.domain_whitelist_string, 3)
+        # generate_dicts += self.generate_general_dicts(string.ascii_lowercase, 4)
+        generate_dicts += self.generate_general_dicts(string.digits, 4)
 
-            logger.info(f'Load Dicts: generate_general.esd Count: {len(generate_dicts)}')
+        logger.info(f'Load Dicts: generate_general.esd Count: {len(generate_dicts)}')
 
-            dicts += generate_dicts
+        dicts += generate_dicts
 
         # root domain
         dicts.append('@')

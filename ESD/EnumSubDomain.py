@@ -698,8 +698,8 @@ def main():
         proxy = {}
 
     # Debug mode
-    if 'esd' in os.environ:
-        debug = os.environ['esd']
+    if 'debug' in os.environ:
+        debug = os.environ['debug']
     else:
         debug = False
     logger.info(f'Debug: {debug}')

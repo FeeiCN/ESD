@@ -13975,7 +13975,6 @@ agee
 agelli
 agena
 ageng
-ageng+
 agenor
 agenore
 agent
@@ -14027,11 +14026,6 @@ agrippa
 agro
 agrouter
 ags
-ags+1
-ags+2
-ags+3
-ags+4
-ags+5
 agsm
 agsph
 agsplztu
@@ -44113,8 +44107,6 @@ ncrstp
 ncrt
 ncrtimes
 ncs
-ncs/150
-ncs/at
 ncsa
 ncsat
 ncsc
@@ -57019,7 +57011,7 @@ tessa
 tesseract
 tessi
 tessier
-test]
+test
 test2k
 testa
 testajax
@@ -61119,7 +61111,8 @@ wimp
 wimpy
 wims
 wimsey
-win/tcp
+win
+tcp
 winch
 winchester
 wind
@@ -62572,9 +62565,7 @@ dmz1
 eate4
 eate4-cert
 eth0
-eth0/0
 extranets
-fa0/0
 ftp1
 fxp
 gateway1
@@ -62588,7 +62579,6 @@ netbsd
 orcl
 pdc1
 penadmin1
-pos0/0
 proteo
 relay1
 relay2

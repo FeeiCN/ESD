@@ -640,7 +640,8 @@ and
 edit
 march
 servant
-and/or
+and
+or
 edition
 margin
 serve
@@ -1696,7 +1697,7 @@ ocean
 steady
 boil
 feeling
-o'clock
+oclock
 steak
 bold
 fellow
