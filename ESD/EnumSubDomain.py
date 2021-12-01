@@ -41,7 +41,7 @@ __banner__ = f"""\033[94m
 ssl.match_hostname = lambda cert, hostname: True
 
 
-# TODO: Improves DNS Qeury, The recursion is too slow
+# TODO: Improves DNS Query, The recursion is too slow
 class DNSQuery(object):
     def __init__(self, root_domain, subs, suffix):
         # root domain
@@ -174,7 +174,7 @@ class EnumSubDomain(object):
             'User-Agent': 'Baiduspider',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
             'DNT': '1',
-            'Referer': 'http://www.baidu.com/',
+            'Referer': 'https://www.baidu.com/',
             'Accept-Encoding': 'gzip, deflate',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'}
         # Filter the domain's response(regex)
@@ -487,27 +487,27 @@ class EnumSubDomain(object):
                 continue
             self.resolver = aiodns.DNSResolver(loop=self.loop, nameservers=[dns_server], timeout=self.resolve_timeout)
             job = self.query(self.wildcard_sub)
-            sub, ret = self.loop.run_until_complete(job)
-            logger.info(f'@{dns_server} {sub} {ret}')
-            if ret is None:
+            sub, ips = self.loop.run_until_complete(job)
+            logger.info(f'@{dns_server} {sub} {ips}')
+            if ips is None:
                 # It's NOT a wildcard domain when query no exist subdomain
-                ret = None
+                ips = None
             else:
-                # It's a wildcard domain when query no exist subdomain
-                ret = sorted(ret)
+                # It's a wildcard domain when query exist subdomain
+                ips = sorted(ips)
 
             if dns_server in self.stable_dns_servers:
-                wildcard_ips = ret
-            stable_dns.append(ret)
+                wildcard_ips = ips
+            stable_dns.append(ips)
 
-            if ret:
-                equal = [False for r in ret if r not in last_dns]
+            if ips:
+                equal = [False for r in ips if r not in last_dns]
                 if len(last_dns) != 0 and False in equal:
                     only_similarity = self.is_wildcard_domain = True
                     logger.info('Is a random resolve subdomain.')
                     break
                 else:
-                    last_dns = ret
+                    last_dns = ips
         is_all_stable_dns = stable_dns.count(stable_dns[0]) == len(stable_dns)
         if not is_all_stable_dns:
             logger.info('Is all stable dns: NO, use the default dns server')
