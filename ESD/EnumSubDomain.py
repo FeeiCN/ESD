@@ -26,7 +26,6 @@ from plugins.dnstransfer import DNSTransfer
 from dicts import Dicts
 from logger import logger
 
-__version__ = '0.0.29'
 __banner__ = f"""\033[94m
      ______    _____   _____  
     |  ____|  / ____| |  __ \ 

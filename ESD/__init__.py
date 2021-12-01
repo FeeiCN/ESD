@@ -14,6 +14,8 @@
 """
 import sys
 
+__version__ = '0.0.29'
+
 if __name__ == '__main__':
     # Check Python version, required python3 or higher because used asyncio feature
     if sys.version_info.major < 3:

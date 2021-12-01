@@ -15,7 +15,7 @@
     :copyright: Copyright (c) 2018 Feei. All rights reserved
 """
 import setuptools
-from ESD.EnumSubDomain import __version__
+from ESD import __version__
 
 with open('README.md', 'r') as f:
     long_description = f.read()
